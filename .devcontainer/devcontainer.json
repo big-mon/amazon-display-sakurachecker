@@ -1,0 +1,20 @@
+{
+  "name": "Anthropic Claude Code",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers-community/npm-features/typescript": {}
+  },
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code@latest",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "[json][jsonc][jsonl]": {
+          "editor.defaultFormatter": "vscode.json-language-features",
+          "editor.formatOnSave": true
+        }
+      }
+    }
+  }
+}
