@@ -4,42 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Chrome extension (Manifest V3) that performs sakura (fake review) checking on Amazon product pages. The extension targets both Amazon Japan (`amazon.co.jp`) and Amazon US (`amazon.com`) sites.
+This is a Chrome extension (Manifest V3) that performs sakura (fake review) checking on Amazon product pages. The extension targets both Amazon Japan (`amazon.co.jp`) and Amazon US (`amazon.com`) sites using sakura-checker.jp as the data source.
 
 ## Architecture
 
 - **manifest.json**: Chrome extension configuration with Manifest V3 format
-- **content.js**: Content script that runs on Amazon pages (not yet implemented)
-- **popup.html**: Extension popup interface (not yet implemented)
-- **icons/**: Extension icons directory (not yet implemented)
+- **content.js**: Content script that runs on Amazon pages, handles ASIN extraction, sakura-checker.jp API calls, and UI display
+- **icons/icon16.svg**: Extension icon (16x16 SVG format)
+- **package.json**: Minimal package configuration (no build dependencies)
 
-## Development Commands
+## Installation and Usage
 
-```bash
-# Install dependencies
-npm install
+This extension has no build process and runs directly from source:
 
-# Development build with watch mode
-npm run dev
+1. Open `chrome://extensions/` in Chrome
+2. Enable "Developer mode" 
+3. Click "Load unpacked extension"
+4. Select this project folder
+5. Visit Amazon product pages or wishlists to see sakura scores
 
-# Production build
-npm run build
+## Core Functionality
 
-# Test (not configured yet)
-npm test
-```
+### Product Page Detection
+The extension detects Amazon product pages through:
+- URL pattern matching (`/dp/` or `/gp/product/`)
+- DOM element presence checks (`#productTitle`, price elements, etc.)
 
-## Chrome Extension Structure
+### ASIN Extraction
+Multiple methods are used to extract Amazon Standard Identification Numbers:
+- URL parsing for `/dp/[ASIN]` patterns
+- `data-asin` attributes on DOM elements
+- Meta tag content analysis
 
-The extension uses:
-- **Content Scripts**: Injected into Amazon pages to analyze product information
-- **Popup Interface**: Accessed via extension icon for user interaction
-- **Permissions**: `activeTab` and `storage` for page access and data persistence
-- **Host Permissions**: Limited to Amazon domains for security
+### Sakura Score Integration
+- Constructs sakura-checker.jp URLs using extracted product URLs
+- Parses HTML responses to extract percentage scores
+- Handles both "サクラ度XX%" and "XX%サクラ" text patterns
 
-## Key Files to Implement
+### UI Display System
+- **Product Pages**: Large prominent display with color-coded risk levels
+- **Wishlist Pages**: Compact badge display for each item
+- **Color Coding**: Red (80%+), Orange (60%+), Yellow (40%+), Green (<40%)
+- **Rate Limiting**: 500ms delays between wishlist item requests
 
-1. `content.js` - Main content script for Amazon page analysis
-2. `popup.html` - Extension popup interface
-3. `popup.js` - Popup functionality
-4. `icons/` - Extension icons (16x16, 48x48, 128x128)
+## Extension Permissions
+
+- `activeTab`: Access to current Amazon page
+- `storage`: Local data persistence  
+- `host_permissions`: Access to Amazon domains and sakura-checker.jp
+
+## Technical Notes
+
+- No external dependencies or build tools required
+- CORS handled through manifest permissions
+- Mutation observer for dynamic page content changes
+- Graceful fallback positioning for UI elements
