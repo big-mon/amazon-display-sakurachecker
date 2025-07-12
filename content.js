@@ -4,6 +4,10 @@
 (function() {
     'use strict';
     
+    // 処理中のASINを追跡して重複実行を防止
+    const processingASINs = new Set();
+    let isInitialized = false;
+    
     // 商品ASINを抽出する関数
     function extractProductASIN() {
         // 1. URLからASINを抽出
@@ -81,30 +85,68 @@
     
     // Background Scriptにサクラチェックを依頼する関数
     async function checkSakuraScore(productURL, asin) {
+        // 重複実行を防止
+        if (processingASINs.has(asin)) {
+            console.log('Amazon Display Sakura Checker: 既に処理中です - ASIN:', asin);
+            return;
+        }
+        
+        // 既存の結果がある場合はスキップ
+        const existingResult = document.querySelector('#sakura-checker-result');
+        if (existingResult && !existingResult.textContent.includes('調査中') && !existingResult.textContent.includes('エラー')) {
+            console.log('Amazon Display Sakura Checker: 既に結果が表示されています - ASIN:', asin);
+            return;
+        }
+        
+        processingASINs.add(asin);
+        
         try {
-            console.log('Amazon Display Sakura Checker: サクラチェック開始');
+            console.log('Amazon Display Sakura Checker: サクラチェック開始 - ASIN:', asin);
             
             // 読み込み中の表示を設定
             displayLoadingResult(asin);
             
-            // Background Scriptにメッセージを送信
-            const response = await chrome.runtime.sendMessage({
-                action: 'checkSakuraScore',
-                productURL: productURL,
-                asin: asin
-            });
+            // Chrome拡張機能のランタイムが利用可能かチェック
+            if (!chrome.runtime || !chrome.runtime.sendMessage) {
+                throw new Error('Chrome拡張機能のランタイムが利用できません');
+            }
             
-            if (response.success) {
+            // Background Scriptにメッセージを送信（タイムアウト付き）
+            const response = await Promise.race([
+                chrome.runtime.sendMessage({
+                    action: 'checkSakuraScore',
+                    productURL: productURL,
+                    asin: asin
+                }),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Background Scriptからの応答がタイムアウトしました')), 30000)
+                )
+            ]);
+            
+            if (response && response.success) {
                 console.log('Amazon Display Sakura Checker: サクラ度:', response.sakuraScore);
                 displaySakuraResult(response.sakuraScore, asin);
             } else {
-                console.error('Amazon Display Sakura Checker: エラー:', response.error);
-                displayErrorResult(response.error, asin);
+                console.error('Amazon Display Sakura Checker: エラー:', response?.error || 'レスポンスが不正です');
+                displayErrorResult(response?.error || 'サクラ度を取得できませんでした', asin);
             }
             
         } catch (error) {
             console.error('Amazon Display Sakura Checker: 通信エラー:', error);
-            displayErrorResult('通信に失敗しました', asin);
+            let errorMessage = '通信に失敗しました';
+            
+            if (error.message.includes('Extension context invalidated')) {
+                errorMessage = '拡張機能を再読み込みしてください';
+            } else if (error.message.includes('タイムアウト')) {
+                errorMessage = 'リクエストがタイムアウトしました';
+            } else if (error.message.includes('ランタイムが利用できません')) {
+                errorMessage = 'Chrome拡張機能として正しく読み込まれていません';
+            }
+            
+            displayErrorResult(errorMessage, asin);
+        } finally {
+            // 処理完了時にASINを削除
+            processingASINs.delete(asin);
         }
     }
     
@@ -523,25 +565,53 @@
     
     // ウィッシュリスト用のサクラチェック結果表示
     async function checkSakuraScoreForWishlist(productURL, asin, element) {
+        // 重複実行を防止
+        if (processingASINs.has(asin)) {
+            console.log('Amazon Display Sakura Checker: ウィッシュリスト商品既に処理中 - ASIN:', asin);
+            return;
+        }
+        
+        // 既存の結果がある場合はスキップ
+        const existingResult = element.querySelector('.sakura-checker-wishlist-result');
+        if (existingResult) {
+            console.log('Amazon Display Sakura Checker: ウィッシュリスト商品既に結果表示済み - ASIN:', asin);
+            return;
+        }
+        
+        processingASINs.add(asin);
+        
         try {
-            console.log('Amazon Display Sakura Checker: ウィッシュリスト商品チェック開始');
+            console.log('Amazon Display Sakura Checker: ウィッシュリスト商品チェック開始 - ASIN:', asin);
             
-            // Background Scriptにメッセージを送信
-            const response = await chrome.runtime.sendMessage({
-                action: 'checkSakuraScore',
-                productURL: productURL,
-                asin: asin
-            });
+            // Chrome拡張機能のランタイムが利用可能かチェック
+            if (!chrome.runtime || !chrome.runtime.sendMessage) {
+                throw new Error('Chrome拡張機能のランタイムが利用できません');
+            }
             
-            if (response.success) {
+            // Background Scriptにメッセージを送信（タイムアウト付き）
+            const response = await Promise.race([
+                chrome.runtime.sendMessage({
+                    action: 'checkSakuraScore',
+                    productURL: productURL,
+                    asin: asin
+                }),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Background Scriptからの応答がタイムアウトしました')), 20000)
+                )
+            ]);
+            
+            if (response && response.success) {
                 console.log('Amazon Display Sakura Checker: ウィッシュリスト商品サクラ度:', response.sakuraScore);
                 displaySakuraResultForWishlist(response.sakuraScore, asin, element);
             } else {
-                console.error('Amazon Display Sakura Checker: ウィッシュリスト商品チェックエラー:', response.error);
+                console.error('Amazon Display Sakura Checker: ウィッシュリスト商品チェックエラー:', response?.error || 'レスポンスが不正です');
             }
             
         } catch (error) {
             console.error('Amazon Display Sakura Checker: ウィッシュリスト商品通信エラー:', error);
+        } finally {
+            // 処理完了時にASINを削除
+            processingASINs.delete(asin);
         }
     }
     
@@ -594,6 +664,14 @@
     
     // メイン処理
     function initialize() {
+        // 重複初期化を防止
+        if (isInitialized) {
+            console.log('Amazon Display Sakura Checker: 既に初期化済みです');
+            return;
+        }
+        
+        console.log('Amazon Display Sakura Checker: 初期化開始');
+        
         if (isProductPage()) {
             const asin = extractProductASIN();
             if (!asin) {
@@ -605,10 +683,14 @@
             console.log('Amazon Display Sakura Checker: 商品URL:', productURL);
             console.log('Amazon Display Sakura Checker: 商品ASIN:', asin);
             
+            // 初期化フラグを設定
+            isInitialized = true;
+            
             // サクラチェック結果を取得
             checkSakuraScore(productURL, asin);
         } else if (isWishlistPage()) {
             console.log('Amazon Display Sakura Checker: ウィッシュリストページを検出');
+            isInitialized = true;
             processWishlistItems();
         } else {
             console.log('Amazon Display Sakura Checker: 対象ページではありません');
@@ -624,13 +706,49 @@
     
     // 動的ページ変更への対応
     const observer = new MutationObserver((mutations) => {
+        let shouldReinitialize = false;
+        
         mutations.forEach((mutation) => {
             if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                // ページ内容が変更された場合、再初期化
-                setTimeout(initialize, 1000);
+                // 追加されたノードがサクラチェック結果でない場合のみ再初期化を検討
+                const hasNonSakuraNodes = Array.from(mutation.addedNodes).some(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        // サクラチェック結果の要素は無視
+                        return !node.id?.includes('sakura-checker') && 
+                               !node.className?.includes('sakura-checker') &&
+                               !node.querySelector?.('#sakura-checker-result, .sakura-checker-wishlist-result');
+                    }
+                    return false;
+                });
+                
+                if (hasNonSakuraNodes) {
+                    shouldReinitialize = true;
+                }
             }
         });
+        
+        // URL変更を検出（SPAナビゲーション対応）
+        const currentURL = window.location.href;
+        if (observer.lastURL && observer.lastURL !== currentURL) {
+            console.log('Amazon Display Sakura Checker: URL変更を検出');
+            isInitialized = false;
+            processingASINs.clear();
+            shouldReinitialize = true;
+        }
+        observer.lastURL = currentURL;
+        
+        if (shouldReinitialize && !isInitialized) {
+            console.log('Amazon Display Sakura Checker: ページ変更により再初期化');
+            setTimeout(() => {
+                // 再初期化前にフラグをリセット
+                isInitialized = false;
+                initialize();
+            }, 1500);
+        }
     });
+    
+    // 初期URL記録
+    observer.lastURL = window.location.href;
     
     observer.observe(document.body, {
         childList: true,
