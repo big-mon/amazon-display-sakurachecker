@@ -40,6 +40,18 @@
     
     // 商品URLを生成する関数
     function generateProductURL(asin) {
+        // 現在のURLが既に適切な形式の場合はそのまま使用
+        const currentURL = window.location.href;
+        
+        // 現在のURLにASINが含まれている場合は、そのURLを使用
+        if (currentURL.includes(asin)) {
+            // URLのクエリパラメータやハッシュを除去してクリーンなURLにする
+            const url = new URL(currentURL);
+            const cleanURL = `${url.protocol}//${url.hostname}${url.pathname}`;
+            return cleanURL.endsWith('/') ? cleanURL.slice(0, -1) : cleanURL;
+        }
+        
+        // フォールバック: 標準的なdp/形式で生成
         const currentDomain = window.location.hostname;
         return `https://${currentDomain}/dp/${asin}`;
     }
