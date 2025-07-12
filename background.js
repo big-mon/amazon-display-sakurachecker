@@ -3,7 +3,7 @@
 
 console.log('Background Script: スクリプト読み込み完了');
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     console.log('Background Script: メッセージ受信:', request);
     
     if (request.action === 'checkSakuraScore') {
