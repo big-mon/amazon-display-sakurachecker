@@ -119,7 +119,7 @@
                     asin: asin
                 }),
                 new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Background Scriptからの応答がタイムアウトしました')), 30000)
+                    setTimeout(() => reject(new Error('Background Scriptからの応答がタイムアウトしました')), 45000)
                 )
             ]);
             
@@ -596,7 +596,7 @@
                     asin: asin
                 }),
                 new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Background Scriptからの応答がタイムアウトしました')), 20000)
+                    setTimeout(() => reject(new Error('Background Scriptからの応答がタイムアウトしました')), 45000)
                 )
             ]);
             

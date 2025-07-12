@@ -12,17 +12,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
+// リクエスト間隔制御のための変数
+let lastRequestTime = 0;
+const minRequestInterval = 2000; // 最小2秒間隔
+
 // サクラチェッカーからサクラ度を取得する関数
 async function checkSakuraScore(productURL, asin) {
-    const timeoutMs = 15000; // 15秒タイムアウト
-    const maxRetries = 2; // 最大2回リトライ
+    const timeoutMs = 20000; // 20秒タイムアウト
+    const maxRetries = 3; // 最大3回リトライ
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             console.log(`Background Script: サクラチェック開始 (${attempt + 1}/${maxRetries + 1}) - ASIN:`, asin);
             
+            // リクエスト間隔制御
+            const now = Date.now();
+            const timeSinceLastRequest = now - lastRequestTime;
+            if (timeSinceLastRequest < minRequestInterval) {
+                const waitTime = minRequestInterval - timeSinceLastRequest;
+                console.log(`Background Script: リクエスト間隔調整のため${waitTime}ms待機`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+            
+            // ランダムな追加遅延（1-3秒）でより自然なアクセスパターンを模倣
+            const randomDelay = Math.floor(Math.random() * 2000) + 1000;
+            await new Promise(resolve => setTimeout(resolve, randomDelay));
+            
+            lastRequestTime = Date.now();
+            
             // sakura-checker.jpのURL構築
             const sakuraCheckerURL = `https://sakura-checker.jp/search/${encodeURIComponent(productURL)}`;
+            console.log('Background Script: リクエストURL:', sakuraCheckerURL);
             
             // タイムアウト制御
             const controller = new AbortController();
@@ -32,11 +52,20 @@ async function checkSakuraScore(productURL, asin) {
                 method: 'GET',
                 signal: controller.signal,
                 headers: {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                     'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Cache-Control': 'max-age=0',
+                    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                    'Sec-Ch-Ua-Mobile': '?0',
+                    'Sec-Ch-Ua-Platform': '"Windows"',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Upgrade-Insecure-Requests': '1',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': 'https://www.google.com/'
                 }
             });
             
@@ -44,6 +73,25 @@ async function checkSakuraScore(productURL, asin) {
             
             if (!response.ok) {
                 const errorMessage = `HTTP Error: ${response.status} ${response.statusText}`;
+                console.log('Background Script: HTTPエラー詳細:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    url: sakuraCheckerURL,
+                    headers: Object.fromEntries(response.headers.entries())
+                });
+                
+                // 403エラーの場合は特別な処理
+                if (response.status === 403) {
+                    console.log('Background Script: 403エラー - Bot検出またはアクセス制限');
+                    
+                    // 403エラーの場合、より長い遅延でリトライ
+                    if (attempt < maxRetries) {
+                        const retryDelay = Math.floor(Math.random() * 5000) + 5000; // 5-10秒のランダム遅延
+                        console.log(`Background Script: 403エラーによりリトライ - ${retryDelay}ms後に再試行`);
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        continue;
+                    }
+                }
                 
                 // サーバーエラーの場合はリトライ
                 if (response.status >= 500 && attempt < maxRetries) {
@@ -103,6 +151,8 @@ async function checkSakuraScore(productURL, asin) {
                 errorMessage = 'リクエストがタイムアウトしました。ネットワーク接続を確認してください。';
             } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 errorMessage = 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+            } else if (error.message.includes('HTTP Error: 403')) {
+                errorMessage = 'アクセスが制限されています。サクラチェッカーがBot検出を行っている可能性があります。しばらく時間をおいてから再試行してください。';
             } else if (error.message.includes('HTTP Error: 404')) {
                 errorMessage = '商品が見つかりません。ASINが正しいか確認してください。';
             } else if (error.message.includes('HTTP Error: 429')) {
