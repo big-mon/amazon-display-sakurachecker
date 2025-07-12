@@ -136,11 +136,14 @@
             ]);
             
             if (response && response.success) {
-                console.log('Amazon Display Sakura Checker: サクラ度:', response.sakuraScore);
-                displaySakuraResult(response.sakuraScore, asin);
+                console.log('Amazon Display Sakura Checker: スコア取得成功:', {
+                    scoreRating: response.scoreRating,
+                    sakuraPercentage: response.sakuraPercentage
+                });
+                displayDualScoreResult(response.scoreRating, response.sakuraPercentage, asin);
             } else {
                 console.error('Amazon Display Sakura Checker: エラー:', response?.error || 'レスポンスが不正です');
-                displayErrorResult(response?.error || 'サクラ度を取得できませんでした', asin);
+                displayErrorResult(response?.error || 'スコアを取得できませんでした', asin);
             }
             
         } catch (error) {
@@ -330,9 +333,12 @@
         return errorDiv;
     }
     
-    // サクラチェック結果を表示する関数
-    function displaySakuraResult(sakuraScore, asin) {
-        console.log('Amazon Display Sakura Checker: 結果表示準備中', sakuraScore);
+    // 両方のスコアを表示する関数
+    function displayDualScoreResult(scoreRating, sakuraPercentage, asin) {
+        console.log('Amazon Display Sakura Checker: 両スコア表示準備中', {
+            scoreRating: scoreRating,
+            sakuraPercentage: sakuraPercentage
+        });
         
         // 既存の結果要素を削除
         const existingResult = document.querySelector('#sakura-checker-result');
@@ -341,7 +347,7 @@
         }
         
         // 結果表示要素を作成
-        const resultElement = createResultElement(sakuraScore, asin);
+        const resultElement = createDualScoreElement(scoreRating, sakuraPercentage, asin);
         
         // 挿入位置を特定
         const insertionPoint = findInsertionPoint();
@@ -354,13 +360,68 @@
         }
     }
     
-    // 結果表示要素を作成する関数
-    function createResultElement(sakuraScore, asin) {
+    // 両方のスコア表示要素を作成する関数
+    function createDualScoreElement(scoreRating, sakuraPercentage, asin) {
         const resultDiv = document.createElement('div');
         resultDiv.id = 'sakura-checker-result';
         
-        // サクラ度に応じた色とメッセージを決定
-        const { color, backgroundColor, message, riskLevel } = getSakuraScoreInfo(sakuraScore);
+        // サクラ度に応じた色とメッセージを決定（パーセンテージが優先）
+        let color, backgroundColor, message, riskLevel;
+        
+        if (sakuraPercentage !== null) {
+            const scoreInfo = getSakuraScoreInfo(sakuraPercentage);
+            color = scoreInfo.color;
+            backgroundColor = scoreInfo.backgroundColor;
+            message = scoreInfo.message;
+            riskLevel = scoreInfo.riskLevel;
+        } else {
+            // パーセンテージがない場合はニュートラルな色
+            color = '#6c757d';
+            backgroundColor = '#f8f9fa';
+            message = 'スコア情報を取得しました。';
+            riskLevel = '情報';
+        }
+        
+        // 表示するスコア情報を構築
+        let scoresDisplay = '';
+        
+        if (sakuraPercentage !== null) {
+            scoresDisplay += `
+                <span style="
+                    font-size: 16px;
+                    font-weight: bold;
+                    color: ${color};
+                    margin-right: 10px;
+                ">
+                    サクラ度: ${sakuraPercentage}%
+                </span>
+            `;
+        }
+        
+        if (scoreRating !== null) {
+            scoresDisplay += `
+                <span style="
+                    font-size: 14px;
+                    color: #495057;
+                    background-color: #e9ecef;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                ">
+                    スコア: ${scoreRating}
+                </span>
+            `;
+        }
+        
+        if (!scoresDisplay) {
+            scoresDisplay = `
+                <span style="
+                    font-size: 14px;
+                    color: #6c757d;
+                ">
+                    スコア情報なし
+                </span>
+            `;
+        }
         
         resultDiv.innerHTML = `
             <div style="
@@ -393,19 +454,15 @@
                     ">
                         🌸 サクラチェック
                     </span>
-                    <span style="
-                        font-size: 16px;
-                        font-weight: bold;
-                        color: ${color};
-                    ">
-                        ${sakuraScore}%
-                    </span>
+                    ${scoresDisplay}
+                    ${sakuraPercentage !== null ? `
                     <span style="
                         font-size: 12px;
                         color: #666;
                     ">
                         ${riskLevel}
                     </span>
+                    ` : ''}
                 </div>
                 <div style="
                     font-size: 13px;
@@ -613,8 +670,11 @@
             ]);
             
             if (response && response.success) {
-                console.log('Amazon Display Sakura Checker: ウィッシュリスト商品サクラ度:', response.sakuraScore);
-                displaySakuraResultForWishlist(response.sakuraScore, asin, element);
+                console.log('Amazon Display Sakura Checker: ウィッシュリスト商品スコア:', {
+                    scoreRating: response.scoreRating,
+                    sakuraPercentage: response.sakuraPercentage
+                });
+                displayDualScoreResultForWishlist(response.scoreRating, response.sakuraPercentage, asin, element);
             } else {
                 console.error('Amazon Display Sakura Checker: ウィッシュリスト商品チェックエラー:', response?.error || 'レスポンスが不正です');
             }
@@ -627,8 +687,8 @@
         }
     }
     
-    // ウィッシュリスト用の結果表示
-    function displaySakuraResultForWishlist(sakuraScore, asin, element) {
+    // ウィッシュリスト用の両スコア結果表示
+    function displayDualScoreResultForWishlist(scoreRating, sakuraPercentage, asin, element) {
         // 既存の結果要素を削除
         const existingResult = element.querySelector('.sakura-checker-wishlist-result');
         if (existingResult) {
@@ -636,18 +696,49 @@
         }
         
         // 結果表示要素を作成
-        const resultElement = createWishlistResultElement(sakuraScore, asin);
+        const resultElement = createWishlistDualScoreElement(scoreRating, sakuraPercentage, asin);
         
         // 商品要素に追加
         element.appendChild(resultElement);
     }
     
-    // ウィッシュリスト用の結果表示要素を作成
-    function createWishlistResultElement(sakuraScore, asin) {
+    // ウィッシュリスト用の両スコア表示要素を作成
+    function createWishlistDualScoreElement(scoreRating, sakuraPercentage, asin) {
         const resultDiv = document.createElement('div');
         resultDiv.className = 'sakura-checker-wishlist-result';
         
-        const { color, backgroundColor, riskLevel } = getSakuraScoreInfo(sakuraScore);
+        // 主要なスコア（パーセンテージ優先）で色を決定
+        let color, backgroundColor, riskLevel;
+        
+        if (sakuraPercentage !== null) {
+            const scoreInfo = getSakuraScoreInfo(sakuraPercentage);
+            color = scoreInfo.color;
+            backgroundColor = scoreInfo.backgroundColor;
+            riskLevel = scoreInfo.riskLevel;
+        } else {
+            color = '#6c757d';
+            backgroundColor = '#f8f9fa';
+            riskLevel = '情報';
+        }
+        
+        // 表示テキストを構築
+        let displayText = '🌸 ';
+        
+        if (sakuraPercentage !== null) {
+            displayText += `${sakuraPercentage}% (${riskLevel})`;
+        }
+        
+        if (scoreRating !== null) {
+            if (sakuraPercentage !== null) {
+                displayText += ` | ${scoreRating}`;
+            } else {
+                displayText += `${scoreRating}`;
+            }
+        }
+        
+        if (sakuraPercentage === null && scoreRating === null) {
+            displayText += 'スコア情報なし';
+        }
         
         resultDiv.innerHTML = `
             <div style="
@@ -657,7 +748,7 @@
                 padding: 4px 8px;
                 margin: 4px 0;
                 font-family: 'Arial', sans-serif;
-                font-size: 12px;
+                font-size: 11px;
                 line-height: 1.2;
                 color: #333;
                 display: inline-block;
@@ -666,7 +757,7 @@
                     font-weight: bold;
                     color: ${color};
                 ">
-                    🌸 ${sakuraScore}% (${riskLevel})
+                    ${displayText}
                 </span>
             </div>
         `;

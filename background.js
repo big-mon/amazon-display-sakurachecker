@@ -117,21 +117,28 @@ async function checkSakuraScore(productURL, asin) {
                 throw new Error('レスポンスが短すぎます（不正なレスポンス）');
             }
             
-            // HTMLからサクラ度を抽出
+            // HTMLから2種類のスコアを抽出
             console.log('Background Script: HTMLレスポンスの一部（デバッグ用）:', html.substring(0, 2000));
-            const sakuraScore = parseSakuraScore(html);
             
-            if (sakuraScore !== null) {
-                console.log('Background Script: サクラ度取得成功:', sakuraScore);
+            const scoreRating = parseScoreRating(html);
+            const sakuraPercentage = parseSakuraPercentage(html);
+            
+            console.log('Background Script: スコア解析結果:', {
+                scoreRating: scoreRating,
+                sakuraPercentage: sakuraPercentage
+            });
+            
+            if (scoreRating !== null || sakuraPercentage !== null) {
                 return { 
                     success: true, 
-                    sakuraScore: sakuraScore, 
+                    scoreRating: scoreRating,
+                    sakuraPercentage: sakuraPercentage,
                     asin: asin,
                     timestamp: new Date().toISOString()
                 };
             } else {
-                // サクラ度が見つからない場合、デバッグ情報を追加
-                console.log('Background Script: サクラ度の抽出に失敗');
+                // 両方のスコアが見つからない場合、デバッグ情報を追加
+                console.log('Background Script: 全てのスコアの抽出に失敗');
                 console.log('Background Script: HTMLの詳細分析:', {
                     htmlLength: html.length,
                     containsSakura: html.includes('サクラ'),
@@ -141,7 +148,7 @@ async function checkSakuraScore(productURL, asin) {
                 });
                 return { 
                     success: false, 
-                    error: 'サクラ度を取得できませんでした。商品が見つからないか、サクラチェッカーでの解析が完了していない可能性があります。', 
+                    error: 'スコアを取得できませんでした。商品が見つからないか、サクラチェッカーでの解析が完了していない可能性があります。', 
                     asin: asin 
                 };
             }
@@ -187,126 +194,176 @@ async function checkSakuraScore(productURL, asin) {
     }
 }
 
-// HTMLからサクラ度を解析する関数
-function parseSakuraScore(html) {
+// n/5 形式のスコア解析関数
+function parseScoreRating(html) {
     try {
-        console.log('Background Script: サクラ度解析開始');
+        console.log('Background Script: n/5スコア解析開始');
         
-        // パターン1: 直接的なサクラ度表記
-        const directPatterns = [
-            /サクラ度[：:\s]*(\d+)%/gi,
-            /サクラ度[：:\s]*(\d+)/gi,
-            /(\d+)%.*サクラ/gi,
-            /サクラチェック結果[：:\s]*(\d+)%/gi,
-            /危険度[：:\s]*(\d+)%/gi,
-            /信頼度[：:\s]*(\d+)%/gi,
-            /注意度数[：:\s]*(\d+)%/gi,
-            /(\d+)%[\s\n]*危険/gi,
-            /(\d+)%[\s\n]*注意/gi,
-            /(\d+)%[\s\n]*安全/gi
+        // XPath指定位置の要素を模擬検索とデバッグ
+        // //*[@id="pagetop"]/div/div/div[1]/section[4]/div[3]/div[11]/div/div[1]/p[2]/span
+        console.log('Background Script: n/5スコア用XPath領域を検索中...');
+        
+        // より柔軟なパターンで検索
+        const xpathPatterns = [
+            /id="pagetop"[\s\S]*?section[\s\S]*?div[3][\s\S]*?div[11][\s\S]*?p[2][\s\S]*?span[\s\S]*?<\/span>/gi,
+            /section[\s\S]*?div[3][\s\S]*?div[11][\s\S]*?p[2][\s\S]*?span[\s\S]*?<\/span>/gi,
+            /div[3][\s\S]*?div[11][\s\S]*?p[2][\s\S]*?span[\s\S]*?<\/span>/gi
         ];
         
-        for (const pattern of directPatterns) {
+        let targetArea = null;
+        for (let i = 0; i < xpathPatterns.length; i++) {
+            const matches = html.match(xpathPatterns[i]);
+            if (matches && matches.length > 0) {
+                targetArea = matches[0];
+                console.log(`Background Script: n/5スコアエリア発見 (パターン${i+1}):`, targetArea.substring(0, 800));
+                
+                // この領域内の全ての画像src属性を抽出
+                const imgSrcs = targetArea.match(/src="[^"]*"/gi);
+                if (imgSrcs) {
+                    console.log('Background Script: n/5エリア内の画像:', imgSrcs);
+                }
+                break;
+            }
+        }
+        
+        if (!targetArea) {
+            console.log('Background Script: n/5スコアエリアが見つかりませんでした');
+        }
+        
+        // n/5形式のスコア画像パターンを検索
+        const scoreImagePatterns = [
+            // 数字画像の連続パターン（例: 1.24/5 = 1_dot_2_4_slash_5.png のような形式）
+            /(\d+)\.(\d+)\/5/gi,
+            /(\d)_(\d+)_slash_5\.png/gi,
+            /score_(\d+)_(\d+)_5\.png/gi,
+            /rating_(\d)_(\d+)\.png/gi
+        ];
+        
+        for (const pattern of scoreImagePatterns) {
+            const matches = html.matchAll(pattern);
+            for (const match of matches) {
+                const scoreText = match[0];
+                console.log(`Background Script: n/5スコアパターンマッチ "${pattern}" -> ${scoreText}`);
+                
+                // スコア形式の文字列をそのまま返す
+                if (scoreText.includes('/5')) {
+                    return scoreText;
+                }
+            }
+        }
+        
+        // 画像ファイル名から数字を復元する試行
+        const digitImagePattern = /(\d+)_(\d+)_(\d+)_(\d+)_(\d+)\.png/gi;
+        const digitMatches = html.matchAll(digitImagePattern);
+        for (const match of digitMatches) {
+            const digits = match.slice(1).join('.');
+            if (digits.includes('.') && digits.includes('5')) {
+                console.log(`Background Script: 数字画像復元 -> ${digits}`);
+                return digits;
+            }
+        }
+        
+        console.log('Background Script: n/5スコアを検出できませんでした');
+        return null;
+    } catch (error) {
+        console.error('Background Script: n/5スコア解析エラー:', error);
+        return null;
+    }
+}
+
+// n% 形式のサクラ度解析関数
+function parseSakuraPercentage(html) {
+    try {
+        console.log('Background Script: n%サクラ度解析開始');
+        
+        // XPath指定位置の要素を模擬検索とデバッグ
+        // //*[@id="pagetop"]/div/div/div[1]/section[4]/div[4]/div/p[1]/span
+        console.log('Background Script: n%サクラ度用XPath領域を検索中...');
+        
+        // より柔軟なパターンで検索
+        const xpathPatterns = [
+            /id="pagetop"[\s\S]*?section[\s\S]*?div[4][\s\S]*?p[1][\s\S]*?span[\s\S]*?<\/span>/gi,
+            /section[\s\S]*?div[4][\s\S]*?p[1][\s\S]*?span[\s\S]*?<\/span>/gi,
+            /div[4][\s\S]*?p[1][\s\S]*?span[\s\S]*?<\/span>/gi
+        ];
+        
+        let targetArea = null;
+        for (let i = 0; i < xpathPatterns.length; i++) {
+            const matches = html.match(xpathPatterns[i]);
+            if (matches && matches.length > 0) {
+                targetArea = matches[0];
+                console.log(`Background Script: n%サクラ度エリア発見 (パターン${i+1}):`, targetArea.substring(0, 800));
+                
+                // この領域内の全ての画像src属性を抽出
+                const imgSrcs = targetArea.match(/src="[^"]*"/gi);
+                if (imgSrcs) {
+                    console.log('Background Script: n%エリア内の画像:', imgSrcs);
+                }
+                break;
+            }
+        }
+        
+        if (!targetArea) {
+            console.log('Background Script: n%サクラ度エリアが見つかりませんでした');
+        }
+        
+        // 全HTML内の全ての画像src属性を解析
+        const allImgSrcs = html.match(/src="[^"]*"/gi) || [];
+        console.log('Background Script: 全HTML内の画像数:', allImgSrcs.length);
+        
+        // 数字を含む画像を特定
+        const digitImages = allImgSrcs.filter(src => /\d/.test(src));
+        console.log('Background Script: 数字を含む画像:', digitImages);
+        
+        // パーセント形式の画像パターンを検索
+        const percentageImagePatterns = [
+            /(\d+)%/gi,
+            /(\d+)_percent\.png/gi,
+            /sakura_(\d+)_percent\.png/gi,
+            /danger_(\d+)\.png/gi,
+            /(\d+)_(\d+)_percent\.png/gi,  // 2桁の数字の場合
+            /(\d+)\.png/gi,  // 単純な数字画像
+            /img_(\d+)\.png/gi,  // img_数字形式
+            /num_(\d+)\.png/gi   // num_数字形式
+        ];
+        
+        for (const pattern of percentageImagePatterns) {
             const matches = html.matchAll(pattern);
             for (const match of matches) {
                 const score = parseInt(match[1]);
-                console.log(`Background Script: パターンマッチ "${pattern}" -> ${score}`);
+                console.log(`Background Script: n%パターンマッチ "${pattern}" -> ${score}%`);
                 if (!isNaN(score) && score >= 0 && score <= 100) {
                     return score;
                 }
             }
         }
         
-        // パターン2: サクラチェッカー特有の画像ファイル名パターン
-        const imagePatterns = [
-            /rv_level_s(\d+)\.png/gi,
-            /sakura_level_(\d+)\.png/gi,
-            /level_(\d+)\.png/gi,
-            /danger_(\d+)\.png/gi,
-            /safe_(\d+)\.png/gi
-        ];
-        
-        for (const pattern of imagePatterns) {
-            const matches = html.matchAll(pattern);
-            for (const match of matches) {
-                const levelNum = parseInt(match[1]);
-                console.log(`Background Script: 画像パターンマッチ "${pattern}" -> レベル${levelNum}`);
-                
-                // レベル番号をサクラ度に変換（複数パターンを試行）
-                if (levelNum >= 1 && levelNum <= 5) {
-                    // パターンA: s01=安全, s05=危険 
-                    const scoreA = (levelNum - 1) * 20 + 10; // 10, 30, 50, 70, 90
-                    
-                    // パターンB: s05=安全, s01=危険（逆順）
-                    const scoreB = (6 - levelNum) * 20 - 10; // 90, 70, 50, 30, 10
-                    
-                    // パターンC: より高い精度の推定
-                    const scoreC = levelNum * 20 - 10; // 10, 30, 50, 70, 90
-                    
-                    // パターンD: 逆順で高精度
-                    const scoreD = (6 - levelNum) * 20 + 9; // 99, 79, 59, 39, 19
-                    
-                    console.log(`Background Script: レベル${levelNum}の推定サクラ度 - A:${scoreA}%, B:${scoreB}%, C:${scoreC}%, D:${scoreD}%`);
-                    
-                    // 実際の商品が99%なので、おそらくパターンD（高レベル=高危険度）が正しい
-                    // とりあえずパターンDを試行
-                    return scoreD;
-                }
-            }
-        }
-        
-        // パターン3: JSON データ内のスコア
-        const jsonPattern = /"sakura[_-]?score"[:\s]*(\d+)/gi;
-        const jsonMatches = html.matchAll(jsonPattern);
-        for (const match of jsonMatches) {
-            const score = parseInt(match[1]);
-            console.log(`Background Script: JSONパターンマッチ -> ${score}`);
+        // 2桁の数字を復元（例: 99% = 9_9_percent.png）
+        const twoDigitPattern = /(\d)(\d)_percent\.png/gi;
+        const twoDigitMatches = html.matchAll(twoDigitPattern);
+        for (const match of twoDigitMatches) {
+            const score = parseInt(match[1] + match[2]);
+            console.log(`Background Script: 2桁復元 -> ${score}%`);
             if (!isNaN(score) && score >= 0 && score <= 100) {
                 return score;
             }
         }
         
-        // パターン4: CSS クラス名からの推定
-        const classPatterns = [
-            /class="[^"]*danger[^"]*(\d+)[^"]*"/gi,
-            /class="[^"]*sakura[^"]*(\d+)[^"]*"/gi,
-            /class="[^"]*level[^"]*(\d+)[^"]*"/gi
-        ];
-        
-        for (const pattern of classPatterns) {
-            const matches = html.matchAll(pattern);
-            for (const match of matches) {
-                const score = parseInt(match[1]);
-                console.log(`Background Script: CSSクラスパターンマッチ -> ${score}`);
-                if (!isNaN(score) && score >= 0 && score <= 100) {
-                    return score;
-                }
+        // 画像alt属性からの抽出
+        const altPattern = /alt="(\d+)%"/gi;
+        const altMatches = html.matchAll(altPattern);
+        for (const match of altMatches) {
+            const score = parseInt(match[1]);
+            console.log(`Background Script: alt属性から -> ${score}%`);
+            if (!isNaN(score) && score >= 0 && score <= 100) {
+                return score;
             }
         }
         
-        // パターン5: 数値のみでの検索（最後の手段）
-        const allNumbers = html.match(/(\d+)%/g);
-        if (allNumbers) {
-            console.log('Background Script: 見つかった全ての数値%:', allNumbers);
-            
-            // サクラ関連のキーワード周辺の数値を優先
-            const sakuraContext = html.match(/サクラ[\s\S]{0,100}(\d+)%/gi);
-            if (sakuraContext && sakuraContext.length > 0) {
-                const contextMatch = sakuraContext[0].match(/(\d+)%/);
-                if (contextMatch) {
-                    const score = parseInt(contextMatch[1]);
-                    console.log(`Background Script: サクラ文脈から数値発見 -> ${score}`);
-                    if (!isNaN(score) && score >= 0 && score <= 100) {
-                        return score;
-                    }
-                }
-            }
-        }
-        
-        console.log('Background Script: 全てのパターンでサクラ度を検出できませんでした');
+        console.log('Background Script: n%サクラ度を検出できませんでした');
         return null;
     } catch (error) {
-        console.error('Background Script: HTML解析エラー:', error);
+        console.error('Background Script: n%サクラ度解析エラー:', error);
         return null;
     }
 }
