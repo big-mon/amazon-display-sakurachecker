@@ -13,7 +13,12 @@
     "https://sakura-checker.jp/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "scripts": [
+      "background/score-parser.js",
+      "background/api-client.js", 
+      "background.js"
+    ],
+    "persistent": false
   },
   "content_scripts": [
     {
@@ -21,7 +26,12 @@
         "https://www.amazon.co.jp/*",
         "https://www.amazon.com/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content/asin-extractor.js",
+        "content/ui-display.js", 
+        "content/sakura-checker.js",
+        "content.js"
+      ],
       "run_at": "document_end"
     }
   ],
