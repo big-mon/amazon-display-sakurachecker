@@ -79,79 +79,201 @@
         return wishlistElements.some(selector => document.querySelector(selector));
     }
     
-    // サクラチェック結果を取得する関数
+    // Background Scriptにサクラチェックを依頼する関数
     async function checkSakuraScore(productURL, asin) {
         try {
             console.log('Amazon Display Sakura Checker: サクラチェック開始');
             
-            // sakura-checker.jpにリクエストを送信
-            const sakuraCheckerURL = `https://sakura-checker.jp/search/${encodeURIComponent(productURL)}`;
+            // 読み込み中の表示を設定
+            displayLoadingResult(asin);
             
-            const response = await fetch(sakuraCheckerURL, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
+            // Background Scriptにメッセージを送信
+            const response = await chrome.runtime.sendMessage({
+                action: 'checkSakuraScore',
+                productURL: productURL,
+                asin: asin
             });
             
-            if (!response.ok) {
-                console.error('Amazon Display Sakura Checker: HTTPエラー:', response.status);
-                return null;
-            }
-            
-            const html = await response.text();
-            console.log('Amazon Display Sakura Checker: レスポンス受信');
-            
-            // HTMLからサクラ度を抽出
-            const sakuraScore = parseSakuraScore(html);
-            
-            if (sakuraScore !== null) {
-                console.log('Amazon Display Sakura Checker: サクラ度:', sakuraScore);
-                displaySakuraResult(sakuraScore, asin);
+            if (response.success) {
+                console.log('Amazon Display Sakura Checker: サクラ度:', response.sakuraScore);
+                displaySakuraResult(response.sakuraScore, asin);
             } else {
-                console.log('Amazon Display Sakura Checker: サクラ度を取得できませんでした');
+                console.error('Amazon Display Sakura Checker: エラー:', response.error);
+                displayErrorResult(response.error, asin);
             }
             
         } catch (error) {
-            console.error('Amazon Display Sakura Checker: エラー:', error);
+            console.error('Amazon Display Sakura Checker: 通信エラー:', error);
+            displayErrorResult('通信に失敗しました', asin);
         }
     }
     
-    // HTMLからサクラ度を解析する関数
-    function parseSakuraScore(html) {
-        try {
-            // 一時的なDOM要素を作成してHTMLを解析
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            
-            // サクラ度を示すテキストを検索
-            const scoreElements = doc.querySelectorAll('*');
-            
-            for (const element of scoreElements) {
-                const text = element.textContent;
-                
-                // "サクラ度XX%" のパターンを検索
-                const match = text.match(/サクラ度[：:]?\s*(\d+)%/);
-                if (match) {
-                    return parseInt(match[1]);
-                }
-                
-                // "XX%サクラ" のパターンを検索
-                const match2 = text.match(/(\d+)%.*サクラ/);
-                if (match2) {
-                    return parseInt(match2[1]);
-                }
-            }
-            
-            return null;
-        } catch (error) {
-            console.error('Amazon Display Sakura Checker: HTML解析エラー:', error);
-            return null;
+    // 読み込み中の表示を行う関数
+    function displayLoadingResult(asin) {
+        // 既存の結果要素を削除
+        const existingResult = document.querySelector('#sakura-checker-result');
+        if (existingResult) {
+            existingResult.remove();
         }
+        
+        // 読み込み中表示要素を作成
+        const loadingElement = createLoadingElement(asin);
+        
+        // 挿入位置を特定
+        const insertionPoint = findInsertionPoint();
+        
+        if (insertionPoint) {
+            insertionPoint.insertAdjacentElement('afterend', loadingElement);
+        } else {
+            document.body.insertAdjacentElement('afterbegin', loadingElement);
+        }
+    }
+    
+    // 読み込み中要素を作成する関数
+    function createLoadingElement(asin) {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'sakura-checker-result';
+        
+        loadingDiv.innerHTML = `
+            <div style="
+                background-color: #f8f9fa;
+                border: 2px solid #6c757d;
+                border-radius: 8px;
+                padding: 12px;
+                margin: 10px 0;
+                font-family: 'Arial', sans-serif;
+                font-size: 14px;
+                line-height: 1.4;
+                color: #333;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                position: relative;
+                z-index: 1000;
+            ">
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 8px;
+                ">
+                    <span style="
+                        background-color: #6c757d;
+                        color: white;
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 12px;
+                    ">
+                        🌸 サクラチェック
+                    </span>
+                    <span style="
+                        font-size: 14px;
+                        color: #6c757d;
+                    ">
+                        調査中...
+                    </span>
+                </div>
+                <div style="
+                    font-size: 13px;
+                    color: #555;
+                    margin-bottom: 8px;
+                ">
+                    サクラ度を調査しています。しばらくお待ちください。
+                </div>
+                <div style="
+                    font-size: 11px;
+                    color: #999;
+                    text-align: right;
+                ">
+                    Powered by sakura-checker.jp
+                </div>
+            </div>
+        `;
+        
+        return loadingDiv;
+    }
+    
+    // エラー表示を行う関数
+    function displayErrorResult(errorMessage, asin) {
+        // 既存の結果要素を削除
+        const existingResult = document.querySelector('#sakura-checker-result');
+        if (existingResult) {
+            existingResult.remove();
+        }
+        
+        // エラー表示要素を作成
+        const errorElement = createErrorElement(errorMessage, asin);
+        
+        // 挿入位置を特定
+        const insertionPoint = findInsertionPoint();
+        
+        if (insertionPoint) {
+            insertionPoint.insertAdjacentElement('afterend', errorElement);
+        } else {
+            document.body.insertAdjacentElement('afterbegin', errorElement);
+        }
+    }
+    
+    // エラー要素を作成する関数
+    function createErrorElement(errorMessage, asin) {
+        const errorDiv = document.createElement('div');
+        errorDiv.id = 'sakura-checker-result';
+        
+        errorDiv.innerHTML = `
+            <div style="
+                background-color: #fff3cd;
+                border: 2px solid #ffc107;
+                border-radius: 8px;
+                padding: 12px;
+                margin: 10px 0;
+                font-family: 'Arial', sans-serif;
+                font-size: 14px;
+                line-height: 1.4;
+                color: #333;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                position: relative;
+                z-index: 1000;
+            ">
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 8px;
+                ">
+                    <span style="
+                        background-color: #ffc107;
+                        color: #212529;
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 12px;
+                    ">
+                        ⚠️ サクラチェック
+                    </span>
+                    <span style="
+                        font-size: 14px;
+                        color: #856404;
+                    ">
+                        エラー
+                    </span>
+                </div>
+                <div style="
+                    font-size: 13px;
+                    color: #555;
+                    margin-bottom: 8px;
+                ">
+                    ${errorMessage}
+                </div>
+                <div style="
+                    font-size: 11px;
+                    color: #999;
+                    text-align: right;
+                ">
+                    Powered by sakura-checker.jp
+                </div>
+            </div>
+        `;
+        
+        return errorDiv;
     }
     
     // サクラチェック結果を表示する関数
@@ -404,35 +526,22 @@
         try {
             console.log('Amazon Display Sakura Checker: ウィッシュリスト商品チェック開始');
             
-            // sakura-checker.jpにリクエストを送信
-            const sakuraCheckerURL = `https://sakura-checker.jp/search/${encodeURIComponent(productURL)}`;
-            
-            const response = await fetch(sakuraCheckerURL, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
+            // Background Scriptにメッセージを送信
+            const response = await chrome.runtime.sendMessage({
+                action: 'checkSakuraScore',
+                productURL: productURL,
+                asin: asin
             });
             
-            if (!response.ok) {
-                console.error('Amazon Display Sakura Checker: HTTPエラー:', response.status);
-                return;
-            }
-            
-            const html = await response.text();
-            const sakuraScore = parseSakuraScore(html);
-            
-            if (sakuraScore !== null) {
-                console.log('Amazon Display Sakura Checker: ウィッシュリスト商品サクラ度:', sakuraScore);
-                displaySakuraResultForWishlist(sakuraScore, asin, element);
+            if (response.success) {
+                console.log('Amazon Display Sakura Checker: ウィッシュリスト商品サクラ度:', response.sakuraScore);
+                displaySakuraResultForWishlist(response.sakuraScore, asin, element);
+            } else {
+                console.error('Amazon Display Sakura Checker: ウィッシュリスト商品チェックエラー:', response.error);
             }
             
         } catch (error) {
-            console.error('Amazon Display Sakura Checker: ウィッシュリスト商品チェックエラー:', error);
+            console.error('Amazon Display Sakura Checker: ウィッシュリスト商品通信エラー:', error);
         }
     }
     

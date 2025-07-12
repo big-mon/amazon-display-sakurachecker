@@ -12,6 +12,9 @@
     "https://www.amazon.com/*",
     "https://sakura-checker.jp/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [

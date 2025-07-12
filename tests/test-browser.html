@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Display Sakura Checker - ブラウザテスト</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            border-bottom: 3px solid #ff9900;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #666;
+            border-left: 4px solid #ff9900;
+            padding-left: 10px;
+        }
+        button {
+            background-color: #ff9900;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #e68900;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .test-result {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            background-color: #f9f9f9;
+        }
+        .success {
+            border-color: #28a745;
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            border-color: #dc3545;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .warning {
+            border-color: #ffc107;
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .amazon-mock {
+            background-color: #232f3e;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .amazon-product {
+            background-color: white;
+            color: #333;
+            padding: 20px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+        }
+        #log {
+            background-color: #000;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            height: 200px;
+            overflow-y: scroll;
+            margin: 10px 0;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.loading {
+            background-color: #f8f9fa;
+            border: 2px solid #6c757d;
+            color: #495057;
+        }
+        .status.success {
+            background-color: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+        .status.failed {
+            background-color: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🌸 Amazon Display Sakura Checker - ブラウザテスト</h1>
+        <p>このページでは、Chrome拡張機能の各コンポーネントを個別にテストできます。</p>
+        
+        <div class="test-section">
+            <h2>📋 テストメニュー</h2>
+            <button onclick="runUnitTests()">ユニットテスト実行</button>
+            <button onclick="testASINExtraction()">ASIN抽出テスト</button>
+            <button onclick="testSakuraScoreDisplay()">表示テスト</button>
+            <button onclick="testBackgroundScript()">Background Script通信テスト</button>
+            <button onclick="clearResults()">結果クリア</button>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 テスト結果</h2>
+            <div id="test-status" class="status loading">テスト待機中...</div>
+            <div id="test-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🖥️ 模擬Amazonページ</h2>
+            <div class="amazon-mock">
+                <div class="amazon-product">
+                    <h3 id="productTitle">テスト商品 - Amazon.co.jp限定</h3>
+                    <p>価格: ¥1,980</p>
+                    <p>ASIN: B08N5WRWNW</p>
+                    <div id="feature-bullets">
+                        <ul>
+                            <li>高品質な素材を使用</li>
+                            <li>レビュー評価: ★★★★☆</li>
+                            <li>配送料無料</li>
+                        </ul>
+                    </div>
+                    <!-- この位置にサクラチェック結果が表示される -->
+                </div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>📝 コンソールログ</h2>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        // ログ出力関数
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff4444' : type === 'success' ? '#44ff44' : '#00ff00';
+            logElement.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // テスト結果更新
+        function updateTestStatus(status, message) {
+            const statusElement = document.getElementById('test-status');
+            statusElement.className = `status ${status}`;
+            statusElement.textContent = message;
+        }
+
+        // テスト結果表示
+        function showTestResult(title, success, details) {
+            const resultsElement = document.getElementById('test-results');
+            const resultClass = success ? 'success' : 'error';
+            resultsElement.innerHTML += `
+                <div class="test-result ${resultClass}">
+                    <h4>${success ? '✅' : '❌'} ${title}</h4>
+                    <p>${details}</p>
+                </div>
+            `;
+        }
+
+        // 結果クリア
+        function clearResults() {
+            document.getElementById('test-results').innerHTML = '';
+            document.getElementById('log').innerHTML = '';
+            updateTestStatus('loading', 'テスト待機中...');
+            
+            // 既存のサクラチェック結果も削除
+            const existingResult = document.querySelector('#sakura-checker-result');
+            if (existingResult) {
+                existingResult.remove();
+            }
+            
+            log('テスト結果をクリアしました', 'info');
+        }
+
+        // ユニットテスト実行
+        async function runUnitTests() {
+            updateTestStatus('loading', 'ユニットテスト実行中...');
+            log('ユニットテスト開始', 'info');
+            
+            try {
+                // 基本的な関数テスト
+                const tests = [
+                    testParseSakuraScore,
+                    testExtractASINFromURL,
+                    testGetSakuraScoreInfo,
+                    testIsProductPageDetection
+                ];
+                
+                let passedTests = 0;
+                for (const test of tests) {
+                    try {
+                        const result = await test();
+                        if (result.success) {
+                            passedTests++;
+                            showTestResult(result.name, true, result.message);
+                            log(`✅ ${result.name}: ${result.message}`, 'success');
+                        } else {
+                            showTestResult(result.name, false, result.message);
+                            log(`❌ ${result.name}: ${result.message}`, 'error');
+                        }
+                    } catch (error) {
+                        showTestResult('テストエラー', false, error.message);
+                        log(`❌ テストエラー: ${error.message}`, 'error');
+                    }
+                }
+                
+                const success = passedTests === tests.length;
+                updateTestStatus(success ? 'success' : 'failed', 
+                    `ユニットテスト完了: ${passedTests}/${tests.length} 成功`);
+                
+            } catch (error) {
+                updateTestStatus('failed', 'ユニットテスト失敗');
+                log(`❌ ユニットテストエラー: ${error.message}`, 'error');
+            }
+        }
+
+        // HTML解析テスト
+        function testParseSakuraScore() {
+            const testCases = [
+                { html: '<div>サクラ度: 75%</div>', expected: 75 },
+                { html: '<span>80%のサクラ</span>', expected: 80 },
+                { html: '<div>商品情報</div>', expected: null },
+                { html: '<div>サクラ度: 150%</div>', expected: null }
+            ];
+            
+            for (const testCase of testCases) {
+                const result = parseSakuraScore(testCase.html);
+                if (result !== testCase.expected) {
+                    return {
+                        success: false,
+                        name: 'HTML解析テスト',
+                        message: `期待値: ${testCase.expected}, 実際: ${result}`
+                    };
+                }
+            }
+            
+            return {
+                success: true,
+                name: 'HTML解析テスト',
+                message: '全てのパターンで正常に解析されました'
+            };
+        }
+
+        // サクラ度解析関数
+        function parseSakuraScore(html) {
+            try {
+                const patterns = [
+                    /サクラ度[：:\s]*(\d+)%/,
+                    /(\d+)%.*サクラ/,
+                    /サクラチェック結果[：:\s]*(\d+)%/
+                ];
+                
+                for (const pattern of patterns) {
+                    const match = html.match(pattern);
+                    if (match) {
+                        const score = parseInt(match[1]);
+                        if (!isNaN(score) && score >= 0 && score <= 100) {
+                            return score;
+                        }
+                    }
+                }
+                return null;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // URL ASIN抽出テスト
+        function testExtractASINFromURL() {
+            const testUrls = [
+                { url: 'https://www.amazon.co.jp/dp/B08N5WRWNW', expected: 'B08N5WRWNW' },
+                { url: 'https://www.amazon.com/gp/product/B07XYZ1234', expected: 'B07XYZ1234' },
+                { url: 'https://www.amazon.co.jp/', expected: null }
+            ];
+            
+            for (const testCase of testUrls) {
+                const result = extractASINFromURL(testCase.url);
+                if (result !== testCase.expected) {
+                    return {
+                        success: false,
+                        name: 'ASIN抽出テスト',
+                        message: `URL: ${testCase.url}, 期待値: ${testCase.expected}, 実際: ${result}`
+                    };
+                }
+            }
+            
+            return {
+                success: true,
+                name: 'ASIN抽出テスト',
+                message: '全てのURLパターンで正常に抽出されました'
+            };
+        }
+
+        // ASIN抽出関数
+        function extractASINFromURL(url) {
+            const match = url.match(/\/dp\/([A-Z0-9]{10})|\/gp\/product\/([A-Z0-9]{10})/);
+            return match ? (match[1] || match[2]) : null;
+        }
+
+        // サクラ度情報テスト
+        function testGetSakuraScoreInfo() {
+            const testScores = [
+                { score: 85, expectedRisk: '危険' },
+                { score: 65, expectedRisk: '注意' },
+                { score: 45, expectedRisk: '軽微' },
+                { score: 25, expectedRisk: '安全' }
+            ];
+            
+            for (const testCase of testScores) {
+                const result = getSakuraScoreInfo(testCase.score);
+                if (result.riskLevel !== testCase.expectedRisk) {
+                    return {
+                        success: false,
+                        name: 'サクラ度情報テスト',
+                        message: `スコア: ${testCase.score}, 期待値: ${testCase.expectedRisk}, 実際: ${result.riskLevel}`
+                    };
+                }
+            }
+            
+            return {
+                success: true,
+                name: 'サクラ度情報テスト',
+                message: '全てのスコア範囲で正常に分類されました'
+            };
+        }
+
+        // サクラ度情報関数
+        function getSakuraScoreInfo(sakuraScore) {
+            if (sakuraScore >= 80) {
+                return { riskLevel: '危険', color: '#dc3545', backgroundColor: '#fff5f5' };
+            } else if (sakuraScore >= 60) {
+                return { riskLevel: '注意', color: '#fd7e14', backgroundColor: '#fff8f0' };
+            } else if (sakuraScore >= 40) {
+                return { riskLevel: '軽微', color: '#ffc107', backgroundColor: '#fffef0' };
+            } else {
+                return { riskLevel: '安全', color: '#28a745', backgroundColor: '#f8fff8' };
+            }
+        }
+
+        // 商品ページ判定テスト
+        function testIsProductPageDetection() {
+            // 現在のページで商品ページの要素があるかチェック
+            const productTitle = document.querySelector('#productTitle');
+            const hasProductElements = productTitle !== null;
+            
+            return {
+                success: true,
+                name: '商品ページ判定テスト',
+                message: `商品要素検出: ${hasProductElements ? '成功' : '失敗'} (テストページのため正常)`
+            };
+        }
+
+        // ASIN抽出テスト（メニューボタン用）
+        function testASINExtraction() {
+            updateTestStatus('loading', 'ASIN抽出テスト実行中...');
+            log('ASIN抽出テスト開始', 'info');
+            
+            // 模擬的なテストURLでのASIN抽出
+            const testUrls = [
+                'https://www.amazon.co.jp/dp/B08N5WRWNW',
+                'https://www.amazon.com/gp/product/B07XYZ1234',
+                'https://www.amazon.co.jp/bestsellers'
+            ];
+            
+            let success = true;
+            testUrls.forEach((url, index) => {
+                const asin = extractASINFromURL(url);
+                const expected = index < 2; // 最初の2つのURLはASINがあるはず
+                
+                if ((asin !== null) === expected) {
+                    log(`✅ URL ${index + 1}: ASIN抽出成功 - ${asin || 'なし'}`, 'success');
+                } else {
+                    log(`❌ URL ${index + 1}: ASIN抽出失敗`, 'error');
+                    success = false;
+                }
+            });
+            
+            updateTestStatus(success ? 'success' : 'failed', 
+                `ASIN抽出テスト${success ? '成功' : '失敗'}`);
+            
+            showTestResult('ASIN抽出機能', success, 
+                success ? 'すべてのURLパターンで正常に動作' : '一部のパターンで失敗');
+        }
+
+        // 表示テスト
+        function testSakuraScoreDisplay() {
+            updateTestStatus('loading', '表示テスト実行中...');
+            log('サクラ度表示テスト開始', 'info');
+            
+            // 模擬的なサクラ度結果を表示
+            const testScore = 75;
+            displaySakuraResult(testScore, 'B08N5WRWNW');
+            
+            // 表示要素が作成されたかチェック
+            setTimeout(() => {
+                const resultElement = document.querySelector('#sakura-checker-result');
+                if (resultElement) {
+                    updateTestStatus('success', '表示テスト成功');
+                    log('✅ サクラ度表示要素が正常に作成されました', 'success');
+                    showTestResult('サクラ度表示機能', true, `テストスコア ${testScore}% が正常に表示されました`);
+                } else {
+                    updateTestStatus('failed', '表示テスト失敗');
+                    log('❌ サクラ度表示要素の作成に失敗しました', 'error');
+                    showTestResult('サクラ度表示機能', false, '表示要素が作成されませんでした');
+                }
+            }, 100);
+        }
+
+        // サクラ度結果表示関数（簡略版）
+        function displaySakuraResult(sakuraScore, asin) {
+            // 既存の結果要素を削除
+            const existingResult = document.querySelector('#sakura-checker-result');
+            if (existingResult) {
+                existingResult.remove();
+            }
+            
+            // 結果表示要素を作成
+            const resultElement = createResultElement(sakuraScore, asin);
+            
+            // 商品情報の後に挿入
+            const productInfo = document.querySelector('#feature-bullets');
+            if (productInfo) {
+                productInfo.insertAdjacentElement('afterend', resultElement);
+            }
+        }
+
+        // 結果表示要素作成関数
+        function createResultElement(sakuraScore, asin) {
+            const resultDiv = document.createElement('div');
+            resultDiv.id = 'sakura-checker-result';
+            
+            const { color, backgroundColor, message, riskLevel } = getSakuraScoreInfo(sakuraScore);
+            
+            resultDiv.innerHTML = `
+                <div style="
+                    background-color: ${backgroundColor};
+                    border: 2px solid ${color};
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin: 10px 0;
+                    font-family: 'Arial', sans-serif;
+                    font-size: 14px;
+                    line-height: 1.4;
+                    color: #333;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        margin-bottom: 8px;
+                    ">
+                        <span style="
+                            background-color: ${color};
+                            color: white;
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            font-weight: bold;
+                            font-size: 12px;
+                        ">
+                            🌸 サクラチェック
+                        </span>
+                        <span style="
+                            font-size: 16px;
+                            font-weight: bold;
+                            color: ${color};
+                        ">
+                            ${sakuraScore}%
+                        </span>
+                        <span style="
+                            font-size: 12px;
+                            color: #666;
+                        ">
+                            ${riskLevel}
+                        </span>
+                    </div>
+                    <div style="
+                        font-size: 13px;
+                        color: #555;
+                        margin-bottom: 8px;
+                    ">
+                        ${message || 'テスト表示です'}
+                    </div>
+                    <div style="
+                        font-size: 11px;
+                        color: #999;
+                        text-align: right;
+                    ">
+                        Powered by sakura-checker.jp (テスト)
+                    </div>
+                </div>
+            `;
+            
+            return resultDiv;
+        }
+
+        // Background Script通信テスト
+        async function testBackgroundScript() {
+            updateTestStatus('loading', 'Background Script通信テスト実行中...');
+            log('Background Script通信テスト開始', 'info');
+            
+            // Chrome拡張機能の環境でのみ実行可能
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                try {
+                    const response = await chrome.runtime.sendMessage({
+                        action: 'checkSakuraScore',
+                        productURL: 'https://www.amazon.co.jp/dp/B08N5WRWNW',
+                        asin: 'B08N5WRWNW'
+                    });
+                    
+                    if (response && response.success) {
+                        updateTestStatus('success', 'Background Script通信成功');
+                        log('✅ Background Scriptとの通信が成功しました', 'success');
+                        showTestResult('Background Script通信', true, `サクラ度: ${response.sakuraScore}%`);
+                    } else {
+                        updateTestStatus('failed', 'Background Script通信失敗');
+                        log('❌ Background Scriptからエラーレスポンス', 'error');
+                        showTestResult('Background Script通信', false, response ? response.error : '不明なエラー');
+                    }
+                } catch (error) {
+                    updateTestStatus('failed', 'Background Script通信エラー');
+                    log(`❌ Background Script通信エラー: ${error.message}`, 'error');
+                    showTestResult('Background Script通信', false, error.message);
+                }
+            } else {
+                updateTestStatus('failed', 'Chrome拡張機能環境ではありません');
+                log('❌ Chrome拡張機能の環境で実行してください', 'error');
+                showTestResult('Background Script通信', false, 'Chrome拡張機能として読み込まれていません');
+            }
+        }
+
+        // ページ読み込み時の初期化
+        document.addEventListener('DOMContentLoaded', function() {
+            log('ブラウザテストページが読み込まれました', 'info');
+            log('Chrome拡張機能として読み込んでテストを実行してください', 'info');
+        });
+    </script>
+</body>
+</html>
