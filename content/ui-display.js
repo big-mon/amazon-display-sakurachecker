@@ -239,6 +239,20 @@ function createDualScoreElement(scoreRating, sakuraPercentage, asin) {
                     ${sakuraPercentage.suffix}
                 </span>
             `;
+        } else if (typeof sakuraPercentage === 'object' && sakuraPercentage.type === 'html') {
+            scoresDisplay += `
+                <span style="
+                    font-size: 16px;
+                    font-weight: bold;
+                    color: ${color};
+                    margin-right: 10px;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                ">
+                    サクラ度: ${sakuraPercentage.htmlContent}
+                </span>
+            `;
         } else {
             scoresDisplay += `
                 <span style="
@@ -254,8 +268,17 @@ function createDualScoreElement(scoreRating, sakuraPercentage, asin) {
     }
     
     if (scoreRating !== null) {
+        console.log('UI Display: scoreRating詳細:', {
+            value: scoreRating,
+            type: typeof scoreRating,
+            isObject: typeof scoreRating === 'object',
+            hasTypeProperty: scoreRating && scoreRating.type,
+            typeProperty: scoreRating && scoreRating.type
+        });
+        
         // scoreRatingが画像オブジェクトかどうかをチェック
         if (typeof scoreRating === 'object' && scoreRating.type === 'image') {
+            console.log('UI Display: base64画像として表示:', scoreRating);
             scoresDisplay += `
                 <span style="
                     font-size: 14px;
@@ -263,13 +286,31 @@ function createDualScoreElement(scoreRating, sakuraPercentage, asin) {
                     background-color: #e9ecef;
                     padding: 2px 6px;
                     border-radius: 3px;
-                    display: flex;
+                    display: inline-flex;
                     align-items: center;
-                    gap: 5px;
+                    gap: 3px;
+                    vertical-align: middle;
                 ">
-                    スコア: 
-                    <img src="${scoreRating.imageData}" style="display: inline; vertical-align: middle; max-height: 18px;">
+                    スコア:&nbsp;
+                    <img src="${scoreRating.imageData}" style="display: inline-block; vertical-align: middle; height: 16px; width: auto; border: 1px solid #ccc;">
                     ${scoreRating.suffix}
+                </span>
+            `;
+        } else if (typeof scoreRating === 'object' && scoreRating.type === 'html') {
+            console.log('UI Display: HTML画像として表示:', scoreRating);
+            scoresDisplay += `
+                <span style="
+                    font-size: 14px;
+                    color: #495057;
+                    background-color: #e9ecef;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 3px;
+                    vertical-align: middle;
+                ">
+                    スコア: ${scoreRating.htmlContent}
                 </span>
             `;
         } else {

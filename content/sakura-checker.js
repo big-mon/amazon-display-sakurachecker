@@ -37,6 +37,13 @@ async function checkSakuraScore(productURL, asin, processingASINs) {
         });
         
         let response;
+        console.log('Content Script: Service Workerへメッセージ送信中...', {
+            action: 'checkSakuraScore',
+            productURL: productURL,
+            asin: asin,
+            timestamp: new Date().toISOString()
+        });
+        
         try {
             response = await Promise.race([
                 chrome.runtime.sendMessage({
@@ -45,11 +52,21 @@ async function checkSakuraScore(productURL, asin, processingASINs) {
                     asin: asin
                 }),
                 new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Background Service Workerからの応答がタイムアウトしました')), 45000)
+                    setTimeout(() => {
+                        console.error('Content Script: タイムアウト発生 - Service Workerからの応答が45秒以内に来ませんでした');
+                        reject(new Error('Background Service Workerからの応答がタイムアウトしました'));
+                    }, 45000)
                 )
             ]);
             
             console.log('Content Script: Background Service Workerからのレスポンス:', response);
+            console.log('Content Script: レスポンス詳細:', {
+                success: response?.success,
+                scoreRating: response?.scoreRating,
+                sakuraPercentage: response?.sakuraPercentage,
+                error: response?.error,
+                timestamp: new Date().toISOString()
+            });
         } catch (error) {
             // Service Workerが停止している可能性があるため、再試行
             if (error.message.includes('Extension context invalidated') || 

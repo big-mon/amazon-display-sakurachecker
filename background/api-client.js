@@ -179,13 +179,47 @@ async function checkSakuraScore(productURL, asin) {
                 }
             }
             
+            // Chrome拡張機能でのHTMLレスポンス詳細デバッグ
+            console.log('Background Script: Chrome拡張機能でのHTML解析詳細デバッグ開始');
+            console.log('Background Script: HTMLレスポンスの構造解析:');
+            console.log('Background Script: - HTML長さ:', html.length);
+            console.log('Background Script: - 最初の1000文字:', html.substring(0, 1000));
+            console.log('Background Script: - 中間1000文字:', html.substring(Math.floor(html.length/2), Math.floor(html.length/2) + 1000));
+            console.log('Background Script: - 最後の1000文字:', html.substring(html.length - 1000));
+            
+            // サクラチェッカー特有のセクション要素を探す
+            const sections = html.match(/<section[^>]*>/gi) || [];
+            console.log('Background Script: - section要素数:', sections.length);
+            
+            // item-ratingクラスを含む要素を検索
+            const itemRatingMatches = html.match(/<[^>]*class=[^>]*item-rating[^>]*>/gi) || [];
+            console.log('Background Script: - item-rating要素数:', itemRatingMatches.length);
+            
+            // サクラ度を含むsection要素を検索
+            const sakuraSections = html.match(/<section[^>]*>[\s\S]*?サクラ度[\s\S]*?<\/section>/gi) || [];
+            console.log('Background Script: - サクラ度section数:', sakuraSections.length);
+            
             const scoreRating = self.ScoreParser ? self.ScoreParser.parseScoreRating(html) : null;
             const sakuraPercentage = self.ScoreParser ? self.ScoreParser.parseSakuraPercentage(html) : null;
             
             console.log('Background Script: スコア解析結果:', {
                 scoreRating: scoreRating,
-                sakuraPercentage: sakuraPercentage
+                scoreRatingType: typeof scoreRating,
+                scoreRatingDetails: scoreRating,
+                sakuraPercentage: sakuraPercentage,
+                sakuraPercentageType: typeof sakuraPercentage
             });
+            
+            // scoreRatingが画像オブジェクトかどうか詳細チェック
+            if (scoreRating && typeof scoreRating === 'object') {
+                console.log('Background Script: scoreRatingオブジェクト詳細:', {
+                    hasType: 'type' in scoreRating,
+                    type: scoreRating.type,
+                    hasImageData: 'imageData' in scoreRating,
+                    hasSuffix: 'suffix' in scoreRating,
+                    imageDataLength: scoreRating.imageData ? scoreRating.imageData.length : 0
+                });
+            }
             
             if (scoreRating !== null || sakuraPercentage !== null) {
                 console.log('Background Script: 少なくとも1つのスコアが取得できました');

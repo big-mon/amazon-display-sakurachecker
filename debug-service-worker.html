@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Worker デバッグページ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .debug-container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            border-bottom: 3px solid #ff9900;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #666;
+            border-left: 4px solid #ff9900;
+            padding-left: 10px;
+        }
+        button {
+            background-color: #ff9900;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #e68900;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.success {
+            background-color: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+        .status.warning {
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+        }
+        #log {
+            background-color: #000;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            height: 300px;
+            overflow-y: scroll;
+            margin: 10px 0;
+        }
+        .instructions {
+            background-color: #e7f3ff;
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <h1>🛠️ Service Worker デバッグページ</h1>
+        <p>Chrome拡張機能のService Workerの動作を詳細にデバッグします。</p>
+        
+        <div class="instructions">
+            <h3>📋 使用方法</h3>
+            <ol>
+                <li>Chrome拡張機能として読み込んでください</li>
+                <li>「Service Worker状態確認」ボタンをクリック</li>
+                <li>「サクラチェックテスト」ボタンでAPI動作確認</li>
+                <li>Chrome DevTools → Application → Service Workers でもログ確認</li>
+            </ol>
+        </div>
+        
+        <div class="debug-container">
+            <h2>🔍 デバッグコントロール</h2>
+            <button onclick="checkServiceWorkerStatus()">Service Worker状態確認</button>
+            <button onclick="testSakuraCheck()">サクラチェックテスト (B0921THFXZ)</button>
+            <button onclick="testCommunication()">通信テスト</button>
+            <button onclick="reloadExtension()">拡張機能リロード</button>
+            <button onclick="clearLog()">ログクリア</button>
+        </div>
+
+        <div class="debug-container">
+            <h2>📊 Service Worker状態</h2>
+            <div id="service-worker-status" class="status warning">状態確認中...</div>
+            <div id="module-status"></div>
+        </div>
+
+        <div class="debug-container">
+            <h2>📝 デバッグログ</h2>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        // ログ出力関数
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff4444' : type === 'success' ? '#44ff44' : '#00ff00';
+            logElement.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[Debug] ${message}`);
+        }
+
+        // ログクリア
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('ログクリアしました', 'info');
+        }
+
+        // Service Worker状態確認
+        async function checkServiceWorkerStatus() {
+            log('Service Worker状態確認開始', 'info');
+            
+            const statusElement = document.getElementById('service-worker-status');
+            const moduleStatusElement = document.getElementById('module-status');
+            
+            try {
+                // Chrome拡張機能の確認
+                if (typeof chrome === 'undefined' || !chrome.runtime) {
+                    statusElement.className = 'status error';
+                    statusElement.textContent = 'Chrome拡張機能として読み込まれていません';
+                    log('Chrome拡張機能が検出されません', 'error');
+                    return;
+                }
+                
+                log('Chrome拡張機能環境検出成功', 'success');
+                
+                // Service Workerへの接続テスト
+                const testMessage = {
+                    action: 'ping',
+                    timestamp: new Date().toISOString()
+                };
+                
+                log('Service Workerへping送信中...', 'info');
+                
+                chrome.runtime.sendMessage(testMessage, (response) => {
+                    if (chrome.runtime.lastError) {
+                        statusElement.className = 'status error';
+                        statusElement.textContent = 'Service Worker接続エラー: ' + chrome.runtime.lastError.message;
+                        log('Service Worker接続エラー: ' + chrome.runtime.lastError.message, 'error');
+                    } else {
+                        statusElement.className = 'status success';
+                        statusElement.textContent = 'Service Worker動作確認済み';
+                        log('Service Worker応答: ' + JSON.stringify(response), 'success');
+                    }
+                });
+                
+                // モジュール状態の表示
+                moduleStatusElement.innerHTML = `
+                    <h3>モジュール読み込み状況</h3>
+                    <ul>
+                        <li>Chrome Runtime: ${chrome.runtime ? '✅' : '❌'}</li>
+                        <li>Extension ID: ${chrome.runtime.id || 'なし'}</li>
+                        <li>Manifest Version: ${chrome.runtime.getManifest().manifest_version || 'なし'}</li>
+                    </ul>
+                `;
+                
+            } catch (error) {
+                statusElement.className = 'status error';
+                statusElement.textContent = 'エラー: ' + error.message;
+                log('Service Worker状態確認エラー: ' + error.message, 'error');
+            }
+        }
+
+        // サクラチェックテスト
+        async function testSakuraCheck() {
+            log('サクラチェックテスト開始', 'info');
+            
+            const testASIN = 'B0921THFXZ';
+            const testURL = `https://www.amazon.co.jp/dp/${testASIN}`;
+            
+            try {
+                log(`テスト対象: ${testURL}`, 'info');
+                
+                const startTime = Date.now();
+                
+                chrome.runtime.sendMessage({
+                    action: 'checkSakuraScore',
+                    productURL: testURL,
+                    asin: testASIN
+                }, (response) => {
+                    const endTime = Date.now();
+                    const duration = endTime - startTime;
+                    
+                    if (chrome.runtime.lastError) {
+                        log('サクラチェックエラー: ' + chrome.runtime.lastError.message, 'error');
+                    } else {
+                        log(`サクラチェック完了 (${duration}ms)`, 'success');
+                        log('結果: ' + JSON.stringify(response, null, 2), 'info');
+                        
+                        if (response && response.success) {
+                            log('🎉 サクラチェック成功!', 'success');
+                            log(`スコア評価: ${JSON.stringify(response.scoreRating)}`, 'info');
+                            log(`サクラ度: ${response.sakuraPercentage}%`, 'info');
+                        } else {
+                            log('サクラチェック失敗: ' + (response?.error || '不明なエラー'), 'error');
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                log('サクラチェックテストエラー: ' + error.message, 'error');
+            }
+        }
+
+        // 通信テスト
+        async function testCommunication() {
+            log('通信テスト開始', 'info');
+            
+            try {
+                const testMessages = [
+                    { action: 'ping' },
+                    { action: 'status' },
+                    { action: 'unknown' }
+                ];
+                
+                for (const message of testMessages) {
+                    log(`メッセージ送信: ${JSON.stringify(message)}`, 'info');
+                    
+                    chrome.runtime.sendMessage(message, (response) => {
+                        if (chrome.runtime.lastError) {
+                            log(`応答エラー: ${chrome.runtime.lastError.message}`, 'error');
+                        } else {
+                            log(`応答受信: ${JSON.stringify(response)}`, 'success');
+                        }
+                    });
+                    
+                    // 少し待機
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                
+            } catch (error) {
+                log('通信テストエラー: ' + error.message, 'error');
+            }
+        }
+
+        // 拡張機能リロード
+        function reloadExtension() {
+            log('拡張機能リロードを試行中...', 'info');
+            
+            try {
+                chrome.runtime.reload();
+                log('拡張機能リロード送信完了', 'success');
+            } catch (error) {
+                log('拡張機能リロードエラー: ' + error.message, 'error');
+                log('手動でChrome拡張機能ページからリロードしてください', 'warning');
+            }
+        }
+
+        // ページロード時の初期化
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Service Workerデバッグページが読み込まれました', 'info');
+            log('Chrome拡張機能として読み込んでからテストを実行してください', 'info');
+            
+            // 自動で状態確認
+            setTimeout(checkServiceWorkerStatus, 1000);
+        });
+    </script>
+</body>
+</html>

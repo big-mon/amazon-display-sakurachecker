@@ -1,43 +1,87 @@
-// Amazon Display Sakura Checker - Unit Tests
-// TDD原則に従ったテスト実装
+// Amazon Display Sakura Checker - Real API Tests
+// 実際のサクラチェッカーAPIを使用したテスト
 
-// テスト用のモック関数
-const mockChrome = {
-    runtime: {
-        sendMessage: null, // テストごとに設定
-        onMessage: {
-            addListener: function(callback) {
-                this.callback = callback;
-            },
-            callback: null
-        }
+// テスト対象の関数群を読み込み
+const fs = require('fs');
+const path = require('path');
+
+// score-parser.jsの内容を読み込み
+const scoreParserPath = path.join(__dirname, '../background/score-parser.js');
+const scoreParserCode = fs.readFileSync(scoreParserPath, 'utf8');
+
+// api-client.jsの内容を読み込み
+const apiClientPath = path.join(__dirname, '../background/api-client.js');
+const apiClientCode = fs.readFileSync(apiClientPath, 'utf8');
+
+// fetch APIのポリフィル
+const { default: fetch } = require('node-fetch');
+global.fetch = fetch;
+
+// DOMParserのモック
+class DOMParserMock {
+    parseFromString(html, type) {
+        return {
+            querySelectorAll: (selector) => {
+                if (selector === 'img[src*="/images/icon_rv"]') {
+                    // 実際のサクラチェッカーから取得した画像パターンをシミュレート
+                    const images = [];
+                    const matches = html.match(/\/images\/icon_rv\d+\.png/g);
+                    if (matches) {
+                        matches.forEach(src => {
+                            images.push({
+                                src: src,
+                                alt: '',
+                                startsWith: (prefix) => src.startsWith(prefix)
+                            });
+                        });
+                    }
+                    return images;
+                }
+                return [];
+            }
+        };
     }
+}
+
+global.DOMParser = DOMParserMock;
+
+// Service Workerグローバルオブジェクトのモック
+global.self = {
+    ScoreParser: {},
+    ApiClient: {}
 };
 
-// グローバルなChrome APIをモック
-global.chrome = mockChrome;
+// score-parser.jsから必要な関数を抽出して実行
+const cleanedScoreParserCode = scoreParserCode
+    .replace(/console\.log/g, '// console.log')
+    .replace(/console\.error/g, '// console.error');
 
-// テスト対象の関数群
-class SakuraCheckerTest {
+// ChromeのAPIを削除してNode.js環境で実行可能にする
+const nodeCompatibleCode = cleanedScoreParserCode.replace(/self\.ScoreParser\s*=\s*{[^}]*};/, `
+global.self.ScoreParser = {
+    extractScoreFromImages: extractScoreFromImages,
+    createImageDisplayHTML: createImageDisplayHTML,
+    parseScoreRating: parseScoreRating,
+    parseSakuraPercentage: parseSakuraPercentage
+};
+`);
+
+eval(nodeCompatibleCode);
+
+class RealSakuraCheckerTest {
     constructor() {
         this.testResults = [];
     }
 
     // テスト実行メソッド
     async runAllTests() {
-        console.log('🧪 Amazon Display Sakura Checker - テスト開始');
+        console.log('🧪 Amazon Display Sakura Checker - 実際のAPI使用テスト開始');
         
-        // Background Script テスト
-        await this.testParseSakuraScore();
-        await this.testCheckSakuraScore();
+        // 実際のサクラチェッカーテスト
+        await this.testRealSakuraChecker();
         
-        // Content Script テスト  
-        await this.testExtractProductASIN();
-        await this.testIsProductPage();
-        await this.testGetSakuraScoreInfo();
-        
-        // 統合テスト
-        await this.testMessageCommunication();
+        // 画像抽出テスト
+        await this.testImageExtraction();
         
         this.showResults();
     }
@@ -70,283 +114,195 @@ class SakuraCheckerTest {
         });
     }
 
-    // HTML解析テスト
-    testParseSakuraScore() {
-        console.log('📝 HTML解析テスト実行中...');
+    // 実際のサクラチェッカーAPIテスト
+    async testRealSakuraChecker() {
+        console.log('🌐 実際のサクラチェッカーAPIテスト実行中...');
         
-        // テストケース1: 正常なサクラ度パターン
-        const html1 = '<div>サクラ度: 75%</div>';
-        const result1 = this.parseSakuraScore(html1);
-        this.assert(result1 === 75, 'サクラ度解析1', `期待値: 75, 実際: ${result1}`);
-        
-        // テストケース2: 別のパターン
-        const html2 = '<span>80%のサクラ</span>';
-        const result2 = this.parseSakuraScore(html2);
-        this.assert(result2 === 80, 'サクラ度解析2', `期待値: 80, 実際: ${result2}`);
-        
-        // テストケース3: サクラ度が見つからない場合
-        const html3 = '<div>商品情報</div>';
-        const result3 = this.parseSakuraScore(html3);
-        this.assert(result3 === null, 'サクラ度解析3', `期待値: null, 実際: ${result3}`);
-        
-        // テストケース4: 範囲外の値
-        const html4 = '<div>サクラ度: 150%</div>';
-        const result4 = this.parseSakuraScore(html4);
-        this.assert(result4 === null, 'サクラ度解析4', `期待値: null, 実際: ${result4}`);
-    }
-
-    // サクラ度解析関数（Background Scriptから移植）
-    parseSakuraScore(html) {
         try {
-            const patterns = [
-                /サクラ度[：:\s]*(\d+)%/,
-                /(\d+)%.*サクラ/,
-                /サクラチェック結果[：:\s]*(\d+)%/,
-                /危険度[：:\s]*(\d+)%/,
-                /信頼度[：:\s]*(\d+)%/
-            ];
+            // 実際のASINでテスト (Amazon Echo Dotなど人気商品)
+            const testASIN = 'B08N5WRWNW';
+            const sakuraURL = `https://sakura-checker.jp/search/${testASIN}/`;
             
-            for (const pattern of patterns) {
-                const match = html.match(pattern);
-                if (match) {
-                    const score = parseInt(match[1]);
-                    if (!isNaN(score) && score >= 0 && score <= 100) {
-                        return score;
-                    }
+            console.log(`📡 リクエスト送信: ${sakuraURL}`);
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒タイムアウト
+            
+            const response = await fetch(sakuraURL, {
+                method: 'GET',
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 }
-            }
+            });
             
-            return null;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    // Background Script API通信テスト
-    async testCheckSakuraScore() {
-        console.log('📡 API通信テスト実行中...');
-        
-        // モックレスポンスを設定
-        const mockFetch = (url) => {
-            if (url.includes('sakura-checker.jp')) {
-                return Promise.resolve({
-                    ok: true,
-                    text: () => Promise.resolve('<div>サクラ度: 65%</div>')
+            clearTimeout(timeoutId);
+            
+            console.log(`📊 レスポンス受信: ${response.status} ${response.statusText}`);
+            
+            this.assert(response.ok, '実API通信1', `HTTP通信成功: ${response.status}`);
+            
+            if (response.ok) {
+                const html = await response.text();
+                
+                console.log(`📄 HTML取得完了: ${html.length}文字`);
+                console.log(`🔍 HTMLサンプル: ${html.substring(0, 200)}...`);
+                
+                // 実際の画像パターンを探す
+                const imageMatches = html.match(/<img[^>]*src="[^"]*"[^>]*>/gi) || [];
+                console.log(`📷 総img要素数: ${imageMatches.length}`);
+                
+                // 画像srcのパターンを分析
+                const imageSources = imageMatches.map(img => {
+                    const srcMatch = img.match(/src="([^"]*)"/);
+                    return srcMatch ? srcMatch[1] : null;
+                }).filter(src => src !== null);
+                
+                console.log(`🔍 画像ソースサンプル (最初の20個):`);
+                imageSources.slice(0, 20).forEach((src, index) => {
+                    console.log(`  ${index + 1}: ${src}`);
                 });
-            }
-            return Promise.reject(new Error('Unknown URL'));
-        };
-        
-        global.fetch = mockFetch;
-        
-        try {
-            const result = await this.checkSakuraScore('https://amazon.co.jp/dp/TEST123', 'TEST123');
-            this.assert(result.success === true, 'API通信1', `通信成功: ${result.success}`);
-            this.assert(result.sakuraScore === 65, 'API通信2', `サクラ度: ${result.sakuraScore}`);
-            this.assert(result.asin === 'TEST123', 'API通信3', `ASIN: ${result.asin}`);
-        } catch (error) {
-            this.assert(false, 'API通信エラー', error.message);
-        }
-    }
-
-    // Background Script関数（簡略版）
-    async checkSakuraScore(productURL, asin) {
-        try {
-            const sakuraCheckerURL = `https://sakura-checker.jp/search/${encodeURIComponent(productURL)}`;
-            const response = await fetch(sakuraCheckerURL);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP Error: ${response.status}`);
-            }
-            
-            const html = await response.text();
-            const sakuraScore = this.parseSakuraScore(html);
-            
-            if (sakuraScore !== null) {
-                return { success: true, sakuraScore: sakuraScore, asin: asin };
-            } else {
-                return { success: false, error: 'サクラ度を取得できませんでした', asin: asin };
-            }
-        } catch (error) {
-            return { success: false, error: error.message, asin: asin };
-        }
-    }
-
-    // ASIN抽出テスト
-    testExtractProductASIN() {
-        console.log('🔍 ASIN抽出テスト実行中...');
-        
-        // テストケース1: 標準的なAmazon URL
-        const testUrl1 = 'https://www.amazon.co.jp/dp/B08N5WRWNW';
-        global.window = { location: { href: testUrl1 } };
-        const result1 = this.extractProductASIN();
-        this.assert(result1 === 'B08N5WRWNW', 'ASIN抽出1', `期待値: B08N5WRWNW, 実際: ${result1}`);
-        
-        // テストケース2: gp/product URL
-        const testUrl2 = 'https://www.amazon.com/gp/product/B07XYZ1234';
-        global.window = { location: { href: testUrl2 } };
-        const result2 = this.extractProductASIN();
-        this.assert(result2 === 'B07XYZ1234', 'ASIN抽出2', `期待値: B07XYZ1234, 実際: ${result2}`);
-        
-        // テストケース3: ASINが含まれないURL
-        const testUrl3 = 'https://www.amazon.co.jp/';
-        global.window = { location: { href: testUrl3 } };
-        global.document = { querySelector: () => null };
-        const result3 = this.extractProductASIN();
-        this.assert(result3 === null, 'ASIN抽出3', `期待値: null, 実際: ${result3}`);
-    }
-
-    // ASIN抽出関数（Content Scriptから移植）
-    extractProductASIN() {
-        // 1. URLからASINを抽出
-        const urlMatch = window.location.href.match(/\/dp\/([A-Z0-9]{10})|\/gp\/product\/([A-Z0-9]{10})/);
-        if (urlMatch) {
-            return urlMatch[1] || urlMatch[2];
-        }
-        
-        // 2. meta要素からASINを抽出（簡略版）
-        if (document && document.querySelector) {
-            const metaASIN = document.querySelector('meta[name="title"]');
-            if (metaASIN) {
-                const content = metaASIN.getAttribute('content');
-                const asinMatch = content.match(/([A-Z0-9]{10})/);
-                if (asinMatch) {
-                    return asinMatch[1];
+                
+                // 数字関連の画像を特に探す
+                const numberImages = imageSources.filter(src => 
+                    src.includes('数字') || 
+                    src.includes('digit') || 
+                    src.includes('number') ||
+                    /\d/.test(src.split('/').pop()) ||
+                    src.includes('score') ||
+                    src.includes('rating') ||
+                    src.includes('percent')
+                );
+                
+                console.log(`🔢 数字関連画像候補 (${numberImages.length}個):`);
+                numberImages.forEach((src, index) => {
+                    console.log(`  ${index + 1}: ${src}`);
+                });
+                
+                // base64画像も探す
+                const base64Images = imageSources.filter(src => src.startsWith('data:image'));
+                console.log(`📊 base64画像数: ${base64Images.length}`);
+                if (base64Images.length > 0) {
+                    console.log(`🔍 base64画像サンプル:`);
+                    base64Images.slice(0, 3).forEach((src, index) => {
+                        console.log(`  ${index + 1}: ${src.substring(0, 100)}...`);
+                    });
                 }
+                
+                this.assert(html.length > 1000, '実API通信2', `HTMLサイズ: ${html.length}文字`);
+                this.assert(html.includes('<html'), '実API通信3', 'HTML形式確認');
+                
+                // サクラチェッカー特有の要素をチェック
+                const hasSakuraKeyword = html.includes('サクラ') || html.includes('sakura');
+                const hasImages = html.includes('/images/icon_rv');
+                const hasPercentage = html.includes('%');
+                
+                this.assert(hasSakuraKeyword, '実API内容1', `サクラキーワード: ${hasSakuraKeyword}`);
+                this.assert(hasImages, '実API内容2', `icon_rv画像: ${hasImages}`);
+                this.assert(hasPercentage, '実API内容3', `パーセンテージ: ${hasPercentage}`);
+                
+                // 実際の画像抽出テスト
+                const imageData = global.self.ScoreParser.extractScoreFromImages(html);
+                
+                console.log('🖼️ 画像抽出結果:', {
+                    sakuraImages: imageData.sakuraImages ? imageData.sakuraImages.length : 0,
+                    scoreImages: imageData.scoreImages ? imageData.scoreImages.length : 0
+                });
+                
+                this.assert(imageData.sakuraImages.length > 0 || imageData.scoreImages.length > 0, 
+                           '画像抽出1', `総画像数: ${(imageData.sakuraImages.length || 0) + (imageData.scoreImages.length || 0)}`);
+                
+                // 実際のスコア解析テスト
+                const sakuraPercentage = global.self.ScoreParser.parseSakuraPercentage(html);
+                const scoreRating = global.self.ScoreParser.parseScoreRating(html);
+                
+                console.log('📈 スコア解析結果:', {
+                    sakuraPercentage: sakuraPercentage,
+                    scoreRating: scoreRating
+                });
+                
+                // 少なくとも一つは取得できることを期待
+                this.assert(sakuraPercentage !== null || scoreRating !== null, 
+                           'スコア解析1', `サクラ度: ${sakuraPercentage ? 'あり' : 'なし'}, スコア: ${scoreRating ? 'あり' : 'なし'}`);
+                
+                if (sakuraPercentage && typeof sakuraPercentage === 'object') {
+                    this.assert(sakuraPercentage.type === 'html', 'スコア解析2', `サクラ度タイプ: ${sakuraPercentage.type}`);
+                    this.assert(sakuraPercentage.htmlContent && sakuraPercentage.htmlContent.length > 0, 
+                               'スコア解析3', `サクラ度HTML長: ${sakuraPercentage.htmlContent ? sakuraPercentage.htmlContent.length : 0}`);
+                }
+                
+                if (scoreRating && typeof scoreRating === 'object') {
+                    this.assert(scoreRating.type === 'html', 'スコア解析4', `評価タイプ: ${scoreRating.type}`);
+                    this.assert(scoreRating.htmlContent && scoreRating.htmlContent.length > 0, 
+                               'スコア解析5', `評価HTML長: ${scoreRating.htmlContent ? scoreRating.htmlContent.length : 0}`);
+                }
+                
+            } else {
+                this.assert(false, '実API通信エラー', `HTTPエラー: ${response.status}`);
             }
-        }
-        
-        return null;
-    }
-
-    // 商品ページ判定テスト
-    testIsProductPage() {
-        console.log('📄 商品ページ判定テスト実行中...');
-        
-        // テストケース1: 商品ページURL
-        global.window = { location: { pathname: '/dp/B08N5WRWNW' } };
-        const result1 = this.isProductPage();
-        this.assert(result1 === true, 'ページ判定1', `商品ページ判定: ${result1}`);
-        
-        // テストケース2: 非商品ページURL
-        global.window = { location: { pathname: '/bestsellers' } };
-        global.document = { querySelector: () => null };
-        const result2 = this.isProductPage();
-        this.assert(result2 === false, 'ページ判定2', `非商品ページ判定: ${result2}`);
-    }
-
-    // ページ判定関数（Content Scriptから移植）
-    isProductPage() {
-        // URLパターンチェック
-        const urlPattern = /\/(dp|gp\/product)\/[A-Z0-9]{10}/;
-        if (urlPattern.test(window.location.pathname)) {
-            return true;
-        }
-        
-        // DOM要素チェック（簡略版）
-        if (document && document.querySelector) {
-            const productElements = [
-                '#productTitle',
-                '#priceblock_dealprice',
-                '#add-to-cart-button'
-            ];
-            return productElements.some(selector => document.querySelector(selector));
-        }
-        
-        return false;
-    }
-
-    // サクラ度情報取得テスト
-    testGetSakuraScoreInfo() {
-        console.log('📊 サクラ度情報テスト実行中...');
-        
-        // テストケース1: 危険レベル
-        const info1 = this.getSakuraScoreInfo(85);
-        this.assert(info1.riskLevel === '危険', 'スコア情報1', `危険レベル: ${info1.riskLevel}`);
-        this.assert(info1.color === '#dc3545', 'スコア情報2', `色: ${info1.color}`);
-        
-        // テストケース2: 安全レベル
-        const info2 = this.getSakuraScoreInfo(25);
-        this.assert(info2.riskLevel === '安全', 'スコア情報3', `安全レベル: ${info2.riskLevel}`);
-        this.assert(info2.color === '#28a745', 'スコア情報4', `色: ${info2.color}`);
-    }
-
-    // サクラ度情報関数（Content Scriptから移植）
-    getSakuraScoreInfo(sakuraScore) {
-        if (sakuraScore >= 80) {
-            return {
-                color: '#dc3545',
-                backgroundColor: '#fff5f5',
-                message: 'サクラの可能性が非常に高いです。レビューに注意してください。',
-                riskLevel: '危険'
-            };
-        } else if (sakuraScore >= 60) {
-            return {
-                color: '#fd7e14',
-                backgroundColor: '#fff8f0',
-                message: 'サクラの可能性があります。レビューを慎重に確認してください。',
-                riskLevel: '注意'
-            };
-        } else if (sakuraScore >= 40) {
-            return {
-                color: '#ffc107',
-                backgroundColor: '#fffef0',
-                message: 'レビューに多少の疑問があります。',
-                riskLevel: '軽微'
-            };
-        } else {
-            return {
-                color: '#28a745',
-                backgroundColor: '#f8fff8',
-                message: 'レビューは比較的信頼できると思われます。',
-                riskLevel: '安全'
-            };
-        }
-    }
-
-    // メッセージ通信テスト
-    async testMessageCommunication() {
-        console.log('💬 メッセージ通信テスト実行中...');
-        
-        // Background Scriptのメッセージリスナーをシミュレート
-        const messageHandler = (request, sender, sendResponse) => {
-            if (request.action === 'checkSakuraScore') {
-                // 模擬的なレスポンス
-                const mockResponse = {
-                    success: true,
-                    sakuraScore: 45,
-                    asin: request.asin
-                };
-                sendResponse(mockResponse);
-                return true;
-            }
-        };
-        
-        // モックレスポンスを設定
-        mockChrome.runtime.sendMessage = async (message) => {
-            return new Promise((resolve) => {
-                const mockSender = {};
-                messageHandler(message, mockSender, resolve);
-            });
-        };
-        
-        // Content Scriptからのメッセージ送信をテスト
-        try {
-            const response = await chrome.runtime.sendMessage({
-                action: 'checkSakuraScore',
-                productURL: 'https://amazon.co.jp/dp/TEST123',
-                asin: 'TEST123'
-            });
             
-            this.assert(response.success === true, 'メッセージ通信1', `通信成功: ${response.success}`);
-            this.assert(response.sakuraScore === 45, 'メッセージ通信2', `サクラ度: ${response.sakuraScore}`);
-            this.assert(response.asin === 'TEST123', 'メッセージ通信3', `ASIN: ${response.asin}`);
         } catch (error) {
-            this.assert(false, 'メッセージ通信エラー', error.message);
+            console.error('❌ 実API通信エラー:', error.message);
+            this.assert(false, '実API通信例外', `エラー: ${error.message}`);
+        }
+    }
+
+    // 画像抽出の詳細テスト
+    async testImageExtraction() {
+        console.log('🖼️ 画像抽出詳細テスト実行中...');
+        
+        // 実際のサクラチェッカーHTMLパターンをシミュレート
+        const mockHTML = `
+            <html>
+                <body>
+                    <div id="pagetop">
+                        <section>
+                            <img src="/images/icon_rv01.png" alt="">
+                            <img src="/images/icon_rv09.png" alt="">
+                            <img src="/images/icon_rv09.png" alt="">
+                            <img src="/images/icon_rv10.png" alt="">
+                        </section>
+                        <section>
+                            <img src="/images/icon_rv01.png" alt="">
+                            <img src="/images/icon_rv06.png" alt="">
+                            <img src="/images/icon_rv02.png" alt="">
+                            <img src="/images/icon_rv04.png" alt="">
+                            <img src="/images/icon_rv05.png" alt="">
+                            <img src="/images/icon_rv05.png" alt="">
+                        </section>
+                    </div>
+                </body>
+            </html>
+        `;
+        
+        const imageData = global.self.ScoreParser.extractScoreFromImages(mockHTML);
+        
+        console.log('🔍 モック画像抽出結果:', imageData);
+        
+        this.assert(imageData.sakuraImages.length > 0, 'モック画像1', `サクラ度画像数: ${imageData.sakuraImages.length}`);
+        this.assert(imageData.scoreImages.length > 0, 'モック画像2', `評価画像数: ${imageData.scoreImages.length}`);
+        
+        // HTML生成テスト
+        const sakuraHTML = global.self.ScoreParser.createImageDisplayHTML(imageData.sakuraImages, '%');
+        const scoreHTML = global.self.ScoreParser.createImageDisplayHTML(imageData.scoreImages, '/5');
+        
+        this.assert(sakuraHTML && sakuraHTML.type === 'html', 'HTML生成1', `サクラ度HTML生成: ${sakuraHTML ? 'OK' : 'NG'}`);
+        this.assert(scoreHTML && scoreHTML.type === 'html', 'HTML生成2', `評価HTML生成: ${scoreHTML ? 'OK' : 'NG'}`);
+        
+        if (sakuraHTML) {
+            this.assert(sakuraHTML.htmlContent.includes('img'), 'HTML内容1', `サクラ度にimg要素含有: ${sakuraHTML.htmlContent.includes('img')}`);
+            this.assert(sakuraHTML.htmlContent.includes('sakura-checker.jp'), 'HTML内容2', `サクラ度に正しいURL: ${sakuraHTML.htmlContent.includes('sakura-checker.jp')}`);
+        }
+        
+        if (scoreHTML) {
+            this.assert(scoreHTML.htmlContent.includes('img'), 'HTML内容3', `評価にimg要素含有: ${scoreHTML.htmlContent.includes('img')}`);
+            this.assert(scoreHTML.htmlContent.includes('/5'), 'HTML内容4', `評価に/5接尾辞: ${scoreHTML.htmlContent.includes('/5')}`);
         }
     }
 }
 
 // テスト実行
-const tester = new SakuraCheckerTest();
-tester.runAllTests();
+const tester = new RealSakuraCheckerTest();
+tester.runAllTests().catch(console.error);

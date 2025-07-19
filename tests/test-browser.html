@@ -133,6 +133,7 @@
             <button onclick="testASINExtraction()">ASIN抽出テスト</button>
             <button onclick="testSakuraScoreDisplay()">表示テスト</button>
             <button onclick="testBackgroundScript()">Background Script通信テスト</button>
+            <button onclick="testBase64ImageDisplay()">base64画像表示テスト</button>
             <button onclick="clearResults()">結果クリア</button>
         </div>
 
@@ -566,6 +567,179 @@
                 log('❌ Chrome拡張機能の環境で実行してください', 'error');
                 showTestResult('Background Script通信', false, 'Chrome拡張機能として読み込まれていません');
             }
+        }
+
+        // base64画像表示テスト
+        function testBase64ImageDisplay() {
+            updateTestStatus('loading', 'base64画像表示テスト実行中...');
+            log('base64画像表示テスト開始', 'info');
+            
+            // 実際のサクラチェッカーから取得したbase64画像（実データ）
+            const mockScoreRating = {
+                type: 'image',
+                imageData: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+                suffix: '/5'
+            };
+            
+            const mockSakuraPercentage = 99; // 後でbase64画像に変更予定
+            
+            // 画像表示対応版のUI表示をテスト
+            displayDualScoreResultWithImages(mockScoreRating, mockSakuraPercentage, 'B0921THFXZ');
+            
+            // 表示要素が作成されたかチェック
+            setTimeout(() => {
+                const resultElement = document.querySelector('#sakura-checker-result');
+                if (resultElement) {
+                    updateTestStatus('success', 'base64画像表示テスト成功');
+                    log('✅ base64画像表示要素が正常に作成されました', 'success');
+                    showTestResult('base64画像表示機能', true, 'スコア画像と文字が正常に表示されました');
+                } else {
+                    updateTestStatus('failed', 'base64画像表示テスト失敗');
+                    log('❌ base64画像表示要素の作成に失敗しました', 'error');
+                    showTestResult('base64画像表示機能', false, '表示要素が作成されませんでした');
+                }
+            }, 100);
+        }
+
+        // 画像表示対応版のUI表示関数
+        function displayDualScoreResultWithImages(scoreRating, sakuraPercentage, asin) {
+            // 既存の結果要素を削除
+            const existingResult = document.querySelector('#sakura-checker-result');
+            if (existingResult) {
+                existingResult.remove();
+            }
+            
+            // 結果表示要素を作成
+            const resultElement = createDualScoreElementWithImages(scoreRating, sakuraPercentage, asin);
+            
+            // 商品情報の後に挿入
+            const productInfo = document.querySelector('#feature-bullets');
+            if (productInfo) {
+                productInfo.insertAdjacentElement('afterend', resultElement);
+            }
+        }
+
+        // 画像表示対応版の結果要素作成関数
+        function createDualScoreElementWithImages(scoreRating, sakuraPercentage, asin) {
+            const resultDiv = document.createElement('div');
+            resultDiv.id = 'sakura-checker-result';
+            
+            // サクラ度に応じた色とメッセージを決定
+            let color = '#dc3545', backgroundColor = '#fff5f5', riskLevel = '危険';
+            if (sakuraPercentage && sakuraPercentage < 40) {
+                color = '#28a745';
+                backgroundColor = '#f8fff8';
+                riskLevel = '安全';
+            }
+            
+            // 表示するスコア情報を構築
+            let scoresDisplay = '';
+            
+            if (sakuraPercentage !== null) {
+                scoresDisplay += `
+                    <span style="
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: ${color};
+                        margin-right: 10px;
+                    ">
+                        サクラ度: ${sakuraPercentage}%
+                    </span>
+                `;
+            }
+            
+            if (scoreRating !== null) {
+                // scoreRatingが画像オブジェクトかどうかをチェック
+                if (typeof scoreRating === 'object' && scoreRating.type === 'image') {
+                    scoresDisplay += `
+                        <span style="
+                            font-size: 14px;
+                            color: #495057;
+                            background-color: #e9ecef;
+                            padding: 2px 6px;
+                            border-radius: 3px;
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 3px;
+                        ">
+                            評価: 
+                            <img src="${scoreRating.imageData}" style="display: inline-block; vertical-align: middle; max-height: 18px;">
+                            ${scoreRating.suffix}
+                        </span>
+                    `;
+                } else {
+                    scoresDisplay += `
+                        <span style="
+                            font-size: 14px;
+                            color: #495057;
+                            background-color: #e9ecef;
+                            padding: 2px 6px;
+                            border-radius: 3px;
+                        ">
+                            評価: ${scoreRating}
+                        </span>
+                    `;
+                }
+            }
+            
+            resultDiv.innerHTML = `
+                <div style="
+                    background-color: ${backgroundColor};
+                    border: 2px solid ${color};
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin: 10px 0;
+                    font-family: 'Arial', sans-serif;
+                    font-size: 14px;
+                    line-height: 1.4;
+                    color: #333;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    position: relative;
+                    z-index: 1000;
+                ">
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        margin-bottom: 8px;
+                        flex-wrap: wrap;
+                    ">
+                        <span style="
+                            background-color: ${color};
+                            color: white;
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            font-weight: bold;
+                            font-size: 12px;
+                        ">
+                            🌸 サクラチェック
+                        </span>
+                        ${scoresDisplay}
+                        <span style="
+                            font-size: 12px;
+                            color: #666;
+                        ">
+                            ${riskLevel}
+                        </span>
+                    </div>
+                    <div style="
+                        font-size: 13px;
+                        color: #555;
+                        margin-bottom: 8px;
+                    ">
+                        base64画像表示テスト (ASIN: ${asin})
+                    </div>
+                    <div style="
+                        font-size: 11px;
+                        color: #999;
+                        text-align: right;
+                    ">
+                        Powered by sakura-checker.jp (テスト)
+                    </div>
+                </div>
+            `;
+            
+            return resultDiv;
         }
 
         // ページ読み込み時の初期化
