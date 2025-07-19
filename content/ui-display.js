@@ -222,30 +222,69 @@ function createDualScoreElement(scoreRating, sakuraPercentage, asin) {
     let scoresDisplay = '';
     
     if (sakuraPercentage !== null) {
-        scoresDisplay += `
-            <span style="
-                font-size: 16px;
-                font-weight: bold;
-                color: ${color};
-                margin-right: 10px;
-            ">
-                サクラ度: ${sakuraPercentage}%
-            </span>
-        `;
+        // sakuraPercentageが画像オブジェクトかどうかをチェック
+        if (typeof sakuraPercentage === 'object' && sakuraPercentage.type === 'image') {
+            scoresDisplay += `
+                <span style="
+                    font-size: 16px;
+                    font-weight: bold;
+                    color: ${color};
+                    margin-right: 10px;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                ">
+                    サクラ度: 
+                    <img src="${sakuraPercentage.imageData}" style="display: inline; vertical-align: middle; max-height: 20px;">
+                    ${sakuraPercentage.suffix}
+                </span>
+            `;
+        } else {
+            scoresDisplay += `
+                <span style="
+                    font-size: 16px;
+                    font-weight: bold;
+                    color: ${color};
+                    margin-right: 10px;
+                ">
+                    サクラ度: ${sakuraPercentage}%
+                </span>
+            `;
+        }
     }
     
     if (scoreRating !== null) {
-        scoresDisplay += `
-            <span style="
-                font-size: 14px;
-                color: #495057;
-                background-color: #e9ecef;
-                padding: 2px 6px;
-                border-radius: 3px;
-            ">
-                スコア: ${scoreRating}
-            </span>
-        `;
+        // scoreRatingが画像オブジェクトかどうかをチェック
+        if (typeof scoreRating === 'object' && scoreRating.type === 'image') {
+            scoresDisplay += `
+                <span style="
+                    font-size: 14px;
+                    color: #495057;
+                    background-color: #e9ecef;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                ">
+                    スコア: 
+                    <img src="${scoreRating.imageData}" style="display: inline; vertical-align: middle; max-height: 18px;">
+                    ${scoreRating.suffix}
+                </span>
+            `;
+        } else {
+            scoresDisplay += `
+                <span style="
+                    font-size: 14px;
+                    color: #495057;
+                    background-color: #e9ecef;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                ">
+                    スコア: ${scoreRating}
+                </span>
+            `;
+        }
     }
     
     if (!scoresDisplay) {

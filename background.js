@@ -1,20 +1,26 @@
-// Amazon Display Sakura Checker - Background Script (簡素版)
+// Amazon Display Sakura Checker - Background Service Worker
 // 機能モジュールを統合してサクラチェッカーAPIとの通信を担当
 
-console.log('Background Script: スクリプト読み込み完了');
+// Service Worker として動作するため、importScripts を使用
+importScripts(
+    'background/score-parser.js',
+    'background/api-client.js'
+);
+
+console.log('Background Service Worker: スクリプト読み込み完了');
 
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-    console.log('Background Script: メッセージ受信:', request);
+    console.log('Background Service Worker: メッセージ受信:', request);
     
     if (request.action === 'checkSakuraScore') {
-        console.log('Background Script: サクラチェック要求受信:', {
+        console.log('Background Service Worker: サクラチェック要求受信:', {
             productURL: request.productURL,
             asin: request.asin
         });
         
         // モジュールが読み込まれていることを確認
-        if (!window.ApiClient) {
-            console.error('Background Script: ApiClientモジュールが読み込まれていません');
+        if (!self.ApiClient) {
+            console.error('Background Service Worker: ApiClientモジュールが読み込まれていません');
             sendResponse({ 
                 success: false, 
                 error: 'API通信モジュールが利用できません' 
@@ -22,14 +28,14 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
             return;
         }
         
-        window.ApiClient.checkSakuraScore(request.productURL, request.asin)
+        self.ApiClient.checkSakuraScore(request.productURL, request.asin)
             .then(result => {
-                console.log('Background Script: 処理完了:', result?.success ? 'success' : 'failed');
+                console.log('Background Service Worker: 処理完了:', result?.success ? 'success' : 'failed');
                 sendResponse(result);
             })
             .catch(error => {
-                console.error('Background Script: 処理エラー:', error);
-                console.error('Background Script: エラースタック:', error.stack);
+                console.error('Background Service Worker: 処理エラー:', error);
+                console.error('Background Service Worker: エラースタック:', error.stack);
                 
                 const errorResponse = { 
                     success: false,
@@ -39,9 +45,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 
                 try {
                     sendResponse(errorResponse);
-                    console.log('Background Script: エラーレスポンス送信完了');
+                    console.log('Background Service Worker: エラーレスポンス送信完了');
                 } catch (sendError) {
-                    console.error('Background Script: エラーレスポンス送信失敗:', sendError);
+                    console.error('Background Service Worker: エラーレスポンス送信失敗:', sendError);
                 }
             });
         
@@ -49,5 +55,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         return true;
     }
     
-    console.log('Background Script: 不明なアクション:', request.action);
+    console.log('Background Service Worker: 不明なアクション:', request.action);
+});
+
+// Service Worker のインストールとアクティベーション
+self.addEventListener('install', event => {
+    console.log('Background Service Worker: インストール完了');
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+    console.log('Background Service Worker: アクティベーション完了');
+    event.waitUntil(self.clients.claim());
 });

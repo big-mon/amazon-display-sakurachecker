@@ -13,12 +13,8 @@
     "https://sakura-checker.jp/*"
   ],
   "background": {
-    "scripts": [
-      "background/score-parser.js",
-      "background/api-client.js", 
-      "background.js"
-    ],
-    "persistent": false
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {

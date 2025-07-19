@@ -29,17 +29,47 @@ async function checkSakuraScore(productURL, asin, processingASINs) {
             throw new Error('Chrome拡張機能のランタイムが利用できません');
         }
         
-        // Background Scriptにメッセージを送信
-        const response = await Promise.race([
-            chrome.runtime.sendMessage({
-                action: 'checkSakuraScore',
-                productURL: productURL,
-                asin: asin
-            }),
-            new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Background Scriptからの応答がタイムアウトしました')), 45000)
-            )
-        ]);
+        // Service Workerの状態確認とメッセージ送信
+        console.log('Content Script: Background Service Workerにメッセージを送信中...', {
+            runtimeId: chrome.runtime.id,
+            productURL: productURL,
+            asin: asin
+        });
+        
+        let response;
+        try {
+            response = await Promise.race([
+                chrome.runtime.sendMessage({
+                    action: 'checkSakuraScore',
+                    productURL: productURL,
+                    asin: asin
+                }),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Background Service Workerからの応答がタイムアウトしました')), 45000)
+                )
+            ]);
+            
+            console.log('Content Script: Background Service Workerからのレスポンス:', response);
+        } catch (error) {
+            // Service Workerが停止している可能性があるため、再試行
+            if (error.message.includes('Extension context invalidated') || 
+                error.message.includes('Could not establish connection')) {
+                console.warn('Content Script: Service Worker停止検出、再試行中...');
+                
+                // 短い遅延後に再試行
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                response = await chrome.runtime.sendMessage({
+                    action: 'checkSakuraScore',
+                    productURL: productURL,
+                    asin: asin
+                });
+                
+                console.log('Content Script: 再試行後のレスポンス:', response);
+            } else {
+                throw error;
+            }
+        }
         
         if (response?.success) {
             if (window.UiDisplay) {
