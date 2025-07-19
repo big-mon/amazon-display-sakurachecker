@@ -16,14 +16,33 @@ function extractScoreFromImages(html) {
         );
         
         if (scoreSection) {
-            const base64Images = scoreSection.querySelectorAll('img[src^="data:image/png;base64"]');
-            console.log('Background Script: スコア評価セクション内の画像数:', base64Images.length);
+            const scoreSpans = scoreSection.querySelectorAll('span');
+            for (const span of scoreSpans) {
+                const spanImages = span.querySelectorAll('img[src^="data:image/png;base64"]');
+                if (spanImages.length > 0 && span.textContent.includes('/5')) {
+                    const parentElement = span.parentElement;
+                    if (parentElement) {
+                        const allImages = parentElement.querySelectorAll('img[src^="data:image/png;base64"]');
+                        scoreImages = Array.from(allImages).map(img => ({
+                            src: img.src,
+                            alt: img.alt || '',
+                            fullUrl: img.src
+                        }));
+                        break;
+                    }
+                }
+            }
             
-            scoreImages = Array.from(base64Images).map(img => ({
-                src: img.src,
-                alt: img.alt || '',
-                fullUrl: img.src
-            }));
+            if (scoreImages.length === 0) {
+                const base64Images = scoreSection.querySelectorAll('img[src^="data:image/png;base64"]');
+                console.log('Background Script: スコア評価セクション内の画像数:', base64Images.length);
+                
+                scoreImages = Array.from(base64Images).slice(0, 5).map(img => ({
+                    src: img.src,
+                    alt: img.alt || '',
+                    fullUrl: img.src
+                }));
+            }
         }
         
         const sakuraSection = Array.from(doc.querySelectorAll('*')).find(el => 
@@ -31,14 +50,29 @@ function extractScoreFromImages(html) {
         );
         
         if (sakuraSection) {
-            const base64Images = sakuraSection.querySelectorAll('img[src^="data:image/png;base64"]');
-            console.log('Background Script: サクラ度セクション内の画像数:', base64Images.length);
+            const sakuraSpans = sakuraSection.querySelectorAll('span');
+            for (const span of sakuraSpans) {
+                const spanImages = span.querySelectorAll('img[src^="data:image/png;base64"]');
+                if (spanImages.length > 0 && span.textContent.includes('%')) {
+                    sakuraImages = Array.from(spanImages).map(img => ({
+                        src: img.src,
+                        alt: img.alt || '',
+                        fullUrl: img.src
+                    }));
+                    break;
+                }
+            }
             
-            sakuraImages = Array.from(base64Images).map(img => ({
-                src: img.src,
-                alt: img.alt || '',
-                fullUrl: img.src
-            }));
+            if (sakuraImages.length === 0) {
+                const base64Images = sakuraSection.querySelectorAll('img[src^="data:image/png;base64"]');
+                console.log('Background Script: サクラ度セクション内の画像数:', base64Images.length);
+                
+                sakuraImages = Array.from(base64Images).slice(0, 2).map(img => ({
+                    src: img.src,
+                    alt: img.alt || '',
+                    fullUrl: img.src
+                }));
+            }
         }
         
         console.log('Background Script: 抽出されたスコア評価画像:', scoreImages.length);
