@@ -1,7 +1,10 @@
 {
   "name": "amazon-display-sakurachecker",
   "version": "1.0.0",
-  "description": "Amazon商品ページでサクラチェックを行うChrome拡張機能",
+  "description": "Chrome extension that shows Sakura Checker score images on Amazon.co.jp product pages.",
+  "scripts": {
+    "test": "node --test tests/parser.test.js tests/api-client.test.js tests/integration.test.js"
+  },
   "keywords": [
     "chrome-extension",
     "amazon",

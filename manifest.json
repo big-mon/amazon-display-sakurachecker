@@ -2,14 +2,12 @@
   "manifest_version": 3,
   "name": "Amazon Display Sakura Checker",
   "version": "1.0.0",
-  "description": "Amazon商品ページでサクラチェックを行うChrome拡張機能",
+  "description": "Amazon.co.jpの商品詳細ページにサクラチェッカーのスコア画像を表示します。",
   "permissions": [
-    "activeTab",
     "storage"
   ],
   "host_permissions": [
     "https://www.amazon.co.jp/*",
-    "https://www.amazon.com/*",
     "https://sakura-checker.jp/*"
   ],
   "background": {
@@ -18,12 +16,11 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.amazon.co.jp/*",
-        "https://www.amazon.com/*"
+        "https://www.amazon.co.jp/*"
       ],
       "js": [
         "content/asin-extractor.js",
-        "content/ui-display.js", 
+        "content/ui-display.js",
         "content/sakura-checker.js",
         "content.js"
       ],
