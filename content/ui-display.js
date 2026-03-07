@@ -20,8 +20,9 @@
         box-shadow: 0 1px 3px rgba(15, 17, 17, 0.08);
         color: #0f1111;
         font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: 12px;
       }
 
@@ -29,15 +30,7 @@
         min-width: 0;
       }
 
-      #${ROOT_ID} .sc-label {
-        display: block;
-        font-size: 12px;
-        color: #565959;
-        margin-bottom: 4px;
-      }
-
       #${ROOT_ID} .sc-value {
-        min-height: 28px;
         display: flex;
         align-items: center;
         font-size: 14px;
@@ -45,11 +38,24 @@
         color: #0f1111;
       }
 
+      #${ROOT_ID} .sc-main {
+        flex: 1 1 auto;
+      }
+
+      #${ROOT_ID} .sc-side {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+
       #${ROOT_ID} .sc-score-value {
         display: flex;
         align-items: center;
         gap: 4px;
         flex-wrap: wrap;
+        min-height: 28px;
       }
 
       #${ROOT_ID} .sc-score-value img {
@@ -66,6 +72,8 @@
 
       #${ROOT_ID} .sc-status-value {
         color: #007185;
+        font-size: 13px;
+        white-space: nowrap;
       }
 
       #${ROOT_ID} .sc-link {
@@ -106,7 +114,12 @@
 
       @media (max-width: 720px) {
         #${ROOT_ID} {
-          grid-template-columns: 1fr;
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        #${ROOT_ID} .sc-side {
+          align-items: flex-start;
         }
       }
     `;
@@ -150,15 +163,9 @@
     }
   }
 
-  function appendItem(root, labelText, valueNode, itemClassName = "") {
+  function appendItem(root, valueNode, itemClassName = "") {
     const item = document.createElement("div");
     item.className = `sc-item${itemClassName ? ` ${itemClassName}` : ""}`;
-
-    const label = document.createElement("span");
-    label.className = "sc-label";
-    label.textContent = labelText;
-
-    item.appendChild(label);
     item.appendChild(valueNode);
     root.appendChild(item);
   }
@@ -217,9 +224,18 @@
   function renderLayout({ score, sourceUrl, statusText }) {
     const root = ensureRoot();
     clearRoot(root);
-    appendItem(root, "スコア", createScoreValue(score));
-    appendItem(root, "ステータス", createTextValue(statusText, "sc-status-value"));
-    appendItem(root, "リンク", createLinkValue(sourceUrl));
+
+    const main = document.createElement("div");
+    main.className = "sc-main";
+    appendItem(main, createScoreValue(score));
+
+    const side = document.createElement("div");
+    side.className = "sc-side";
+    appendItem(side, createTextValue(statusText, "sc-status-value"));
+    appendItem(side, createLinkValue(sourceUrl));
+
+    root.appendChild(main);
+    root.appendChild(side);
   }
 
   function renderLoading(sourceUrl) {
