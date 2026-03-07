@@ -15,6 +15,8 @@ const sampleImageTag = [
 ].join(" ");
 
 const otherImageTag = sampleImageTag.replace('alt="score"', 'alt="other"');
+const verdictImageTag = '<img src=/images/rv_level03.png alt="判定">';
+const fallbackVerdictImageTag = '<img src=/images/rv_level00.png alt="判定">';
 
 const otherReviewWrap = `
   <div class="item-review-wrap">
@@ -25,6 +27,10 @@ const otherReviewWrap = `
       <div class="item-review-box">
         <div class="item-review-after">
           <p class="item-rating"><span>${otherImageTag}</span>/5</p>
+          <div class="item-review-level">
+            <p class="item-rv-lv item-rv-lv00">${fallbackVerdictImageTag}</p>
+            <p class="item-rv-score">評価件数不足で<br>分析不可</p>
+          </div>
         </div>
       </div>
     </div>
@@ -40,6 +46,10 @@ const targetReviewWrap = `
       <div class="item-review-box">
         <div class="item-review-after">
           <p class="item-rating"><span>${sampleImageTag}</span>/5</p>
+          <div class="item-review-level">
+            <p class="item-rv-lv item-rv-lv03">${verdictImageTag}</p>
+            <p class="item-rv-score">Amazonより<br>かなり低いスコア</p>
+          </div>
         </div>
       </div>
     </div>
@@ -63,7 +73,8 @@ const injectedScoreMarkup = `
     <p class="item-rating"><span>${sampleImageTag}${otherImageTag}</span>/5</p>
   </div>
   <div class="item-review-level">
-    <p class="item-rv-score">Amazonと同等のスコア</p>
+    <p class="item-rv-lv item-rv-lv02">${verdictImageTag}</p>
+    <p class="item-rv-score">Amazonと<br>同等のスコア</p>
   </div>
 `;
 
@@ -106,4 +117,5 @@ module.exports = {
   sampleImageTag,
   scrambledScoreValue,
   targetReviewWrap,
+  verdictImageTag,
 };

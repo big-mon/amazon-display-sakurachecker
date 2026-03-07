@@ -68,8 +68,17 @@ test("checkSakuraScore caches successful responses", async () => {
 
     assert.equal(first.ok, true);
     assert.equal(first.cached, false);
+    assert.deepEqual(first.verdict, {
+      kind: "visual-verdict",
+      image: {
+        src: "https://sakura-checker.jp/images/rv_level03.png",
+        alt: "判定",
+      },
+      lines: ["Amazonより", "かなり低いスコア"],
+    });
     assert.equal(second.ok, true);
     assert.equal(second.cached, true);
+    assert.deepEqual(second.verdict, first.verdict);
     assert.equal(fetchCalls, 1);
   } finally {
     cleanup();

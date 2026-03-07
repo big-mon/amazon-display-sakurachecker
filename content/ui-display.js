@@ -53,12 +53,18 @@
       #${ROOT_ID} .sc-score-value {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 8px 12px;
         flex-wrap: wrap;
         min-height: 28px;
       }
 
-      #${ROOT_ID} .sc-score-value img {
+      #${ROOT_ID} .sc-score-images {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      #${ROOT_ID} .sc-score-images img {
         max-height: 28px;
         width: auto;
         display: block;
@@ -68,6 +74,26 @@
         font-size: 18px;
         font-weight: 700;
         color: #0f1111;
+      }
+
+      #${ROOT_ID} .sc-verdict {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 28px;
+      }
+
+      #${ROOT_ID} .sc-verdict img {
+        max-height: 32px;
+        width: auto;
+        display: block;
+      }
+
+      #${ROOT_ID} .sc-verdict-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        line-height: 1.35;
       }
 
       #${ROOT_ID} .sc-status-value {
@@ -177,7 +203,33 @@
     return value;
   }
 
-  function createScoreValue(score) {
+  function createVerdictNode(verdict) {
+    if (!verdict || !verdict.image || !verdict.lines || !verdict.lines.length) {
+      return null;
+    }
+
+    const verdictNode = document.createElement("div");
+    verdictNode.className = "sc-verdict";
+
+    const icon = document.createElement("img");
+    icon.src = verdict.image.src;
+    icon.alt = verdict.image.alt || "サクラチェッカーの判定";
+    verdictNode.appendChild(icon);
+
+    const text = document.createElement("div");
+    text.className = "sc-verdict-text";
+
+    for (const line of verdict.lines) {
+      const lineNode = document.createElement("span");
+      lineNode.textContent = line;
+      text.appendChild(lineNode);
+    }
+
+    verdictNode.appendChild(text);
+    return verdictNode;
+  }
+
+  function createScoreValue(score, verdict) {
     const value = document.createElement("div");
     value.className = "sc-value sc-score-value";
 
@@ -186,17 +238,26 @@
       return value;
     }
 
+    const scoreImages = document.createElement("div");
+    scoreImages.className = "sc-score-images";
+
     for (const image of score.images) {
       const img = document.createElement("img");
       img.src = image.src;
       img.alt = image.alt || "サクラチェッカーのスコア";
-      value.appendChild(img);
+      scoreImages.appendChild(img);
     }
 
     const suffix = document.createElement("span");
     suffix.className = "sc-suffix";
     suffix.textContent = score.suffix;
-    value.appendChild(suffix);
+    scoreImages.appendChild(suffix);
+    value.appendChild(scoreImages);
+
+    const verdictNode = createVerdictNode(verdict);
+    if (verdictNode) {
+      value.appendChild(verdictNode);
+    }
 
     return value;
   }
@@ -221,13 +282,13 @@
     return value;
   }
 
-  function renderLayout({ score, sourceUrl, statusText }) {
+  function renderLayout({ score, verdict, sourceUrl, statusText }) {
     const root = ensureRoot();
     clearRoot(root);
 
     const main = document.createElement("div");
     main.className = "sc-main";
-    appendItem(main, createScoreValue(score));
+    appendItem(main, createScoreValue(score, verdict));
 
     const side = document.createElement("div");
     side.className = "sc-side";
@@ -243,6 +304,7 @@
     root.dataset.state = "loading";
     renderLayout({
       score: null,
+      verdict: null,
       sourceUrl,
       statusText: "取得中",
     });
@@ -253,6 +315,7 @@
     root.dataset.state = "success";
     renderLayout({
       score: payload.score,
+      verdict: payload.verdict || null,
       sourceUrl: payload.sourceUrl,
       statusText: payload.cached ? "取得済み (キャッシュ)" : "取得済み",
     });
@@ -263,6 +326,7 @@
     root.dataset.state = "error";
     renderLayout({
       score: null,
+      verdict: null,
       sourceUrl: payload && payload.sourceUrl ? payload.sourceUrl : null,
       statusText: "取得失敗",
     });
