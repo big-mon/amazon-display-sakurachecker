@@ -6,6 +6,7 @@ Chrome Web Store での公開を前提に、機能だけでなく、権限・通
 
 ## 関連ドキュメント
 
+- [Chrome Web Store デプロイ手順](./DEPLOYMENT.md)
 - [プライバシーポリシー](./PRIVACY_POLICY.md)
 - [ライセンス](./LICENSE)
 
