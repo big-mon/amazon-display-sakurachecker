@@ -9,6 +9,7 @@
   const ITEM_BUTTON_MARKER = '<p class="item-btn">';
   const ITEM_RATING_MARKER = '<p class="item-rating">';
   const ITEM_REVIEW_LEVEL_MARKER = '<div class="item-review-level">';
+  const ITEM_REVIEW_SCORE_MARKER = '<p class="item-rv-score">';
 
   function getReviewWrapRanges(html) {
     const starts = [];
@@ -59,6 +60,20 @@
     return block.slice(start, end + 4);
   }
 
+  function findReviewLevelMarkup(block) {
+    const start = block.indexOf(ITEM_REVIEW_LEVEL_MARKER);
+    if (start === -1) {
+      return null;
+    }
+
+    const end = block.indexOf("</div>", start);
+    if (end === -1) {
+      return null;
+    }
+
+    return block.slice(start, end + 6);
+  }
+
   function extractRatingMarkups(markup) {
     return Array.from(
       markup.matchAll(/<p class="item-rating">[\s\S]*?<\/p>/g),
@@ -107,11 +122,12 @@
 
   function parseAttributes(tag) {
     const attributes = {};
-    const attributePattern = /([^\s=/>]+)="([^"]*)"/g;
+    const attributePattern =
+      /([^\s=<>\/]+)(?:=(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
     let match = null;
 
     while ((match = attributePattern.exec(tag)) !== null) {
-      attributes[match[1]] = match[2];
+      attributes[match[1]] = match[2] ?? match[3] ?? match[4] ?? "";
     }
 
     return attributes;
@@ -325,12 +341,81 @@
     return extractImageTags(ratingMarkup).map(decodeObfuscatedImageTag).filter(Boolean);
   }
 
+  function decodeHtmlEntities(text) {
+    return text
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  }
+
+  function normalizeVerdictLine(text) {
+    return decodeHtmlEntities(text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+  }
+
+  function decodeVerdictImage(levelMarkup) {
+    const imageTag = extractImageTags(levelMarkup)[0];
+    if (!imageTag) {
+      return null;
+    }
+
+    const attributes = parseAttributes(imageTag);
+    if (!attributes.src) {
+      return null;
+    }
+
+    return {
+      src: attributes.src,
+      alt: attributes.alt || "",
+    };
+  }
+
+  function decodeVerdictLines(levelMarkup) {
+    const start = levelMarkup.indexOf(ITEM_REVIEW_SCORE_MARKER);
+    if (start === -1) {
+      return [];
+    }
+
+    const end = levelMarkup.indexOf("</p>", start);
+    if (end === -1) {
+      return [];
+    }
+
+    const scoreMarkup = levelMarkup.slice(
+      start + ITEM_REVIEW_SCORE_MARKER.length,
+      end
+    );
+    return scoreMarkup
+      .split(/<br\s*\/?>/i)
+      .map(normalizeVerdictLine)
+      .filter(Boolean);
+  }
+
+  function decodeVerdict(levelMarkup) {
+    const image = decodeVerdictImage(levelMarkup);
+    const lines = decodeVerdictLines(levelMarkup);
+
+    if (!image || !lines.length) {
+      return null;
+    }
+
+    return {
+      kind: "visual-verdict",
+      image,
+      lines,
+    };
+  }
+
   function parseVisualScore(html, asin) {
     let ratingMarkup = null;
+    let reviewLevelMarkup = null;
 
     const injectedSnippet = findPrimaryInjectedSnippet(html);
     if (injectedSnippet) {
       ratingMarkup = findRatingMarkupBeforeMarker(injectedSnippet, ITEM_REVIEW_LEVEL_MARKER);
+      reviewLevelMarkup = findReviewLevelMarkup(injectedSnippet);
     }
 
     if (!ratingMarkup) {
@@ -344,6 +429,7 @@
       }
 
       ratingMarkup = findRatingMarkup(productBlock);
+      reviewLevelMarkup = findReviewLevelMarkup(productBlock);
       if (!ratingMarkup) {
         return {
           ok: false,
@@ -354,6 +440,7 @@
     }
 
     const images = decodeRatingImages(ratingMarkup);
+    const verdict = reviewLevelMarkup ? decodeVerdict(reviewLevelMarkup) : null;
 
     if (!images.length) {
       return {
@@ -370,10 +457,14 @@
         images,
         suffix: "/5",
       },
+      verdict,
     };
   }
 
   return {
+    decodeVerdict,
+    decodeVerdictImage,
+    decodeVerdictLines,
     decodeRatingImages,
     decodeObfuscatedImageTag,
     decodeUrlEncodedBase64Payload,
@@ -387,6 +478,7 @@
     findPrimaryInjectedSnippet,
     findRatingMarkup,
     findRatingMarkupBeforeMarker,
+    findReviewLevelMarkup,
     parseAttributes,
     parseVisualScore,
     restoreObfuscatedValue,

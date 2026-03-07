@@ -17,6 +17,40 @@
     return `https://sakura-checker.jp/search/${asin}/`;
   }
 
+  function resolveSakuraUrl(value) {
+    if (!value) {
+      return value;
+    }
+
+    if (/^https?:\/\//i.test(value)) {
+      return value;
+    }
+
+    if (value.startsWith("//")) {
+      return `https:${value}`;
+    }
+
+    try {
+      return new URL(value, "https://sakura-checker.jp").toString();
+    } catch {
+      return value;
+    }
+  }
+
+  function normalizeVerdict(verdict) {
+    if (!verdict || !verdict.image) {
+      return verdict || null;
+    }
+
+    return {
+      ...verdict,
+      image: {
+        ...verdict.image,
+        src: resolveSakuraUrl(verdict.image.src),
+      },
+    };
+  }
+
   function createFailure(code, message, sourceUrl) {
     return { ok: false, code, message, sourceUrl };
   }
@@ -151,6 +185,7 @@
       fetchedAt: new Date().toISOString(),
       sourceUrl,
       score: parsed.score,
+      verdict: normalizeVerdict(parsed.verdict),
     };
 
     await writeCache(asin, payload);

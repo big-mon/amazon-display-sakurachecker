@@ -32,5 +32,13 @@ for (const asin of knownAsins) {
     for (const image of result.score.images) {
       assert.match(image.src, /^data:image\/png;base64,/);
     }
+
+    if (result.verdict) {
+      assert.equal(result.verdict.kind, "visual-verdict");
+      assert.match(result.verdict.image.src, /^https:\/\/sakura-checker\.jp\//);
+      assert.ok(result.verdict.lines.length >= 1);
+    } else {
+      assert.equal(result.verdict, null);
+    }
   });
 }

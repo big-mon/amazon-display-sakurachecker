@@ -51,6 +51,13 @@
         align-items: center;
         gap: 4px;
         min-height: 28px;
+      }
+
+      #${ROOT_ID} .sc-primary {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px 20px;
         margin-bottom: 10px;
       }
 
@@ -58,6 +65,29 @@
         max-height: 28px;
         width: auto;
         display: block;
+      }
+
+      #${ROOT_ID} .sc-verdict {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 28px;
+      }
+
+      #${ROOT_ID} .sc-verdict img {
+        max-height: 32px;
+        width: auto;
+        display: block;
+      }
+
+      #${ROOT_ID} .sc-verdict-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.35;
+        color: #0f1111;
       }
 
       #${ROOT_ID} .sc-suffix {
@@ -214,6 +244,9 @@
     clearRoot(root);
     appendHeader(root, payload.cached ? "キャッシュ表示" : "取得完了");
 
+    const primary = document.createElement("div");
+    primary.className = "sc-primary";
+
     const score = document.createElement("div");
     score.className = "sc-score";
 
@@ -228,7 +261,30 @@
     suffix.className = "sc-suffix";
     suffix.textContent = payload.score.suffix;
     score.appendChild(suffix);
-    root.appendChild(score);
+    primary.appendChild(score);
+
+    if (payload.verdict && payload.verdict.image && payload.verdict.lines?.length) {
+      const verdict = document.createElement("div");
+      verdict.className = "sc-verdict";
+
+      const icon = document.createElement("img");
+      icon.src = payload.verdict.image.src;
+      icon.alt = payload.verdict.image.alt || "サクラチェッカーの判定";
+      verdict.appendChild(icon);
+
+      const text = document.createElement("div");
+      text.className = "sc-verdict-text";
+      for (const line of payload.verdict.lines) {
+        const lineElement = document.createElement("span");
+        lineElement.textContent = line;
+        text.appendChild(lineElement);
+      }
+
+      verdict.appendChild(text);
+      primary.appendChild(verdict);
+    }
+
+    root.appendChild(primary);
 
     const message = document.createElement("div");
     message.className = "sc-message";
