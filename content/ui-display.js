@@ -15,46 +15,44 @@
         border-left: 4px solid #f08804;
         border-radius: 8px;
         background: #ffffff;
-        padding: 16px;
+        padding: 12px 16px;
         margin: 12px 0;
         box-shadow: 0 1px 3px rgba(15, 17, 17, 0.08);
         color: #0f1111;
         font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
       }
 
-      #${ROOT_ID} .sc-header {
+      #${ROOT_ID} .sc-item {
+        min-width: 0;
+      }
+
+      #${ROOT_ID} .sc-label {
+        display: block;
+        font-size: 12px;
+        color: #565959;
+        margin-bottom: 4px;
+      }
+
+      #${ROOT_ID} .sc-value {
+        min-height: 28px;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 10px;
-      }
-
-      #${ROOT_ID} .sc-badge {
-        display: inline-flex;
-        align-items: center;
-        border-radius: 999px;
-        background: #232f3e;
-        color: #ffffff;
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 700;
-        padding: 4px 10px;
+        color: #0f1111;
       }
 
-      #${ROOT_ID} .sc-status {
-        font-size: 13px;
-        color: #565959;
-      }
-
-      #${ROOT_ID} .sc-score {
+      #${ROOT_ID} .sc-score-value {
         display: flex;
         align-items: center;
         gap: 4px;
-        min-height: 28px;
-        margin-bottom: 10px;
+        flex-wrap: wrap;
       }
 
-      #${ROOT_ID} .sc-score img {
+      #${ROOT_ID} .sc-score-value img {
         max-height: 28px;
         width: auto;
         display: block;
@@ -66,26 +64,10 @@
         color: #0f1111;
       }
 
-      #${ROOT_ID} .sc-message {
-        font-size: 14px;
-        line-height: 1.5;
-        color: #0f1111;
+      #${ROOT_ID} .sc-status-value {
+        color: #007185;
       }
 
-      #${ROOT_ID} .sc-meta {
-        font-size: 12px;
-        color: #565959;
-        margin-top: 8px;
-      }
-
-      #${ROOT_ID} .sc-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 12px;
-      }
-
-      #${ROOT_ID} .sc-button,
       #${ROOT_ID} .sc-link {
         appearance: none;
         border: 1px solid #d5d9d9;
@@ -97,19 +79,35 @@
         font-weight: 700;
         padding: 7px 12px;
         text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
 
-      #${ROOT_ID} .sc-button:hover,
       #${ROOT_ID} .sc-link:hover {
         background: #f7fafa;
+      }
+
+      #${ROOT_ID}[data-state="success"] .sc-status-value {
+        color: #067d62;
       }
 
       #${ROOT_ID}[data-state="error"] {
         border-left-color: #b12704;
       }
 
+      #${ROOT_ID}[data-state="error"] .sc-status-value {
+        color: #b12704;
+      }
+
       #${ROOT_ID}[data-state="loading"] {
         border-left-color: #007185;
+      }
+
+      @media (max-width: 720px) {
+        #${ROOT_ID} {
+          grid-template-columns: 1fr;
+        }
       }
     `;
 
@@ -152,115 +150,105 @@
     }
   }
 
-  function appendHeader(root, statusText) {
-    const header = document.createElement("div");
-    header.className = "sc-header";
+  function appendItem(root, labelText, valueNode, itemClassName = "") {
+    const item = document.createElement("div");
+    item.className = `sc-item${itemClassName ? ` ${itemClassName}` : ""}`;
 
-    const badge = document.createElement("span");
-    badge.className = "sc-badge";
-    badge.textContent = "サクラチェッカー";
+    const label = document.createElement("span");
+    label.className = "sc-label";
+    label.textContent = labelText;
 
-    const status = document.createElement("span");
-    status.className = "sc-status";
-    status.textContent = statusText;
-
-    header.appendChild(badge);
-    header.appendChild(status);
-    root.appendChild(header);
+    item.appendChild(label);
+    item.appendChild(valueNode);
+    root.appendChild(item);
   }
 
-  function appendActions(root, options) {
-    const actions = document.createElement("div");
-    actions.className = "sc-actions";
+  function createTextValue(text, className = "") {
+    const value = document.createElement("div");
+    value.className = `sc-value${className ? ` ${className}` : ""}`;
+    value.textContent = text;
+    return value;
+  }
 
-    if (options.onRetry) {
-      const retryButton = document.createElement("button");
-      retryButton.type = "button";
-      retryButton.className = "sc-button";
-      retryButton.textContent = "再試行";
-      retryButton.addEventListener("click", options.onRetry);
-      actions.appendChild(retryButton);
+  function createScoreValue(score) {
+    const value = document.createElement("div");
+    value.className = "sc-value sc-score-value";
+
+    if (!score) {
+      value.textContent = "-";
+      return value;
     }
 
-    if (options.sourceUrl) {
-      const openLink = document.createElement("a");
-      openLink.className = "sc-link";
-      openLink.href = options.sourceUrl;
-      openLink.target = "_blank";
-      openLink.rel = "noopener noreferrer";
-      openLink.textContent = "サクラチェッカーを開く";
-      actions.appendChild(openLink);
-    }
-
-    root.appendChild(actions);
-  }
-
-  function renderLoading() {
-    const root = ensureRoot();
-    root.dataset.state = "loading";
-    clearRoot(root);
-    appendHeader(root, "取得中");
-
-    const message = document.createElement("div");
-    message.className = "sc-message";
-    message.textContent =
-      "サクラチェッカーからスコア画像を取得しています。";
-    root.appendChild(message);
-  }
-
-  function renderSuccess(payload, onRetry) {
-    const root = ensureRoot();
-    root.dataset.state = "success";
-    clearRoot(root);
-    appendHeader(root, payload.cached ? "キャッシュ表示" : "取得完了");
-
-    const score = document.createElement("div");
-    score.className = "sc-score";
-
-    for (const image of payload.score.images) {
+    for (const image of score.images) {
       const img = document.createElement("img");
       img.src = image.src;
       img.alt = image.alt || "サクラチェッカーのスコア";
-      score.appendChild(img);
+      value.appendChild(img);
     }
 
     const suffix = document.createElement("span");
     suffix.className = "sc-suffix";
-    suffix.textContent = payload.score.suffix;
-    score.appendChild(suffix);
-    root.appendChild(score);
+    suffix.textContent = score.suffix;
+    value.appendChild(suffix);
 
-    const message = document.createElement("div");
-    message.className = "sc-message";
-    message.textContent =
-      "サクラチェッカー上で表示されているスコア画像をそのまま表示しています。";
-    root.appendChild(message);
-
-    const meta = document.createElement("div");
-    meta.className = "sc-meta";
-    meta.textContent = `取得日時: ${new Date(payload.fetchedAt).toLocaleString("ja-JP")}`;
-    root.appendChild(meta);
-
-    appendActions(root, { onRetry, sourceUrl: payload.sourceUrl });
+    return value;
   }
 
-  function renderError(payload, onRetry) {
+  function createLinkValue(sourceUrl) {
+    const value = document.createElement("div");
+    value.className = "sc-value";
+
+    if (!sourceUrl) {
+      value.textContent = "-";
+      return value;
+    }
+
+    const openLink = document.createElement("a");
+    openLink.className = "sc-link";
+    openLink.href = sourceUrl;
+    openLink.target = "_blank";
+    openLink.rel = "noopener noreferrer";
+    openLink.textContent = "サクラチェッカーを開く";
+    value.appendChild(openLink);
+
+    return value;
+  }
+
+  function renderLayout({ score, sourceUrl, statusText }) {
+    const root = ensureRoot();
+    clearRoot(root);
+    appendItem(root, "スコア", createScoreValue(score));
+    appendItem(root, "ステータス", createTextValue(statusText, "sc-status-value"));
+    appendItem(root, "リンク", createLinkValue(sourceUrl));
+  }
+
+  function renderLoading(sourceUrl) {
+    const root = ensureRoot();
+    root.dataset.state = "loading";
+    renderLayout({
+      score: null,
+      sourceUrl,
+      statusText: "取得中",
+    });
+  }
+
+  function renderSuccess(payload) {
+    const root = ensureRoot();
+    root.dataset.state = "success";
+    renderLayout({
+      score: payload.score,
+      sourceUrl: payload.sourceUrl,
+      statusText: payload.cached ? "取得済み (キャッシュ)" : "取得済み",
+    });
+  }
+
+  function renderError(payload) {
     const root = ensureRoot();
     root.dataset.state = "error";
-    clearRoot(root);
-    appendHeader(root, "取得失敗");
-
-    const message = document.createElement("div");
-    message.className = "sc-message";
-    message.textContent =
-      payload && payload.message
-        ? payload.message
-        : "サクラチェッカーのスコア画像を取得できませんでした。";
-    root.appendChild(message);
-
-    appendActions(root, {
-      onRetry,
+    renderLayout({
+      score: null,
       sourceUrl: payload && payload.sourceUrl ? payload.sourceUrl : null,
+      statusText: "取得失敗",
     });
   }
 
