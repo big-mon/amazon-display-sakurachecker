@@ -41,12 +41,23 @@ Add these repository secrets in GitHub: `Settings -> Secrets and variables -> Ac
 ## Release flow
 
 1. Update `package.json` to the release version.
-2. Run `npm run sync-version` so `manifest.json` uses the same version.
+2. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
 3. Merge the version bump commit into `main`.
 4. The `Deploy to Chrome Web Store` workflow runs automatically.
 5. If `package.json` version changed in the latest commit, the workflow tests, packages, uploads, and submits the extension for public review.
 
 Pushes to `main` without a `package.json` version change are skipped successfully.
+
+## Local packaging
+
+Create a Chrome Web Store upload zip locally with:
+
+```bash
+npm install
+npm run zip
+```
+
+The command syncs the manifest version and writes `extension.zip` to the repository root. Upload that zip when you need to submit the extension manually.
 
 ## Notes
 

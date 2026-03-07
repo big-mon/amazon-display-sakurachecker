@@ -137,6 +137,15 @@ npm test
 - 結合テスト
 - ブラウザ比較テスト
 
+### Chrome Web Store 提出用 zip を作る
+
+```bash
+npm install
+npm run zip
+```
+
+`npm run zip` は `package.json` の version を `manifest.json` に同期したうえで、拡張の実行に必要なファイルだけを含む `extension.zip` をリポジトリ直下へ生成します。Chrome Web Store への手動アップロードにはこの zip を使います。
+
 ## 公開時に説明欄へ転記できる要約
 
 この拡張は Amazon.co.jp の商品ページで ASIN を読み取り、Sakura Checker の公開ページを参照して評価画像を表示します。外部通信先は Sakura Checker のみです。個人情報、Amazon アカウント情報、入力内容、閲覧履歴一覧は収集しません。取得結果は再取得を減らすためにブラウザ内へ 12 時間キャッシュします。

@@ -52,28 +52,9 @@ jobs:
         if: steps.version-check.outputs.version-changed == 'true'
         run: npm test
 
-      - name: Sync manifest version
-        if: steps.version-check.outputs.version-changed == 'true'
-        run: npm run sync-version
-
       - name: Create extension zip
         if: steps.version-check.outputs.version-changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          staging_dir="$(mktemp -d)"
-          cp manifest.json "$staging_dir/"
-          cp background.js "$staging_dir/"
-          cp content.js "$staging_dir/"
-          cp -R background "$staging_dir/background"
-          cp -R content "$staging_dir/content"
-          cp -R icons "$staging_dir/icons"
-
-          (
-            cd "$staging_dir"
-            zip -r "$GITHUB_WORKSPACE/extension.zip" .
-          )
+        run: npm run zip
 
       - name: Upload to Chrome Web Store
         if: steps.version-check.outputs.version-changed == 'true'
