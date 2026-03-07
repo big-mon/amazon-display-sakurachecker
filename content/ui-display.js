@@ -1,475 +1,281 @@
-// UI表示機能モジュール
-// サクラチェック結果の表示とUI要素の管理
+(function () {
+  const ROOT_ID = "sakura-checker-result";
+  const STYLE_ID = "sakura-checker-style";
 
-// 読み込み中の表示を行う関数
-function displayLoadingResult() {
-    // 既存の結果要素を削除
-    const existingResult = document.querySelector('#sakura-checker-result');
-    if (existingResult) {
-        existingResult.remove();
+  function ensureStyles() {
+    if (document.getElementById(STYLE_ID)) {
+      return;
     }
-    
-    // 読み込み中表示要素を作成
-    const loadingElement = createLoadingElement();
-    
-    // 挿入位置を特定
-    const insertionPoint = findInsertionPoint();
-    
-    if (insertionPoint) {
-        insertionPoint.insertAdjacentElement('afterend', loadingElement);
-    } else {
-        document.body.insertAdjacentElement('afterbegin', loadingElement);
-    }
-}
 
-// 読み込み中要素を作成する関数
-function createLoadingElement() {
-    const loadingDiv = document.createElement('div');
-    loadingDiv.id = 'sakura-checker-result';
-    
-    loadingDiv.innerHTML = `
-        <div style="
-            background-color: #f8f9fa;
-            border: 2px solid #6c757d;
-            border-radius: 8px;
-            padding: 12px;
-            margin: 10px 0;
-            font-family: 'Arial', sans-serif;
-            font-size: 14px;
-            line-height: 1.4;
-            color: #333;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: relative;
-            z-index: 1000;
-        ">
-            <div style="
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin-bottom: 8px;
-            ">
-                <span style="
-                    background-color: #6c757d;
-                    color: white;
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 12px;
-                ">
-                    🌸 サクラチェック
-                </span>
-                <span style="
-                    font-size: 14px;
-                    color: #6c757d;
-                ">
-                    調査中...
-                </span>
-            </div>
-            <div style="
-                font-size: 13px;
-                color: #555;
-                margin-bottom: 8px;
-            ">
-                サクラ度を調査しています。しばらくお待ちください。
-            </div>
-            <div style="
-                font-size: 11px;
-                color: #999;
-                text-align: right;
-            ">
-                Powered by sakura-checker.jp
-            </div>
-        </div>
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = `
+      #${ROOT_ID} {
+        border: 1px solid #d5d9d9;
+        border-left: 4px solid #f08804;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 16px;
+        margin: 12px 0;
+        box-shadow: 0 1px 3px rgba(15, 17, 17, 0.08);
+        color: #0f1111;
+        font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+      }
+
+      #${ROOT_ID} .sc-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      #${ROOT_ID} .sc-badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        background: #232f3e;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
+      }
+
+      #${ROOT_ID} .sc-status {
+        font-size: 13px;
+        color: #565959;
+      }
+
+      #${ROOT_ID} .sc-score {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-height: 28px;
+        margin-bottom: 10px;
+      }
+
+      #${ROOT_ID} .sc-score img {
+        max-height: 28px;
+        width: auto;
+        display: block;
+      }
+
+      #${ROOT_ID} .sc-suffix {
+        font-size: 18px;
+        font-weight: 700;
+        color: #0f1111;
+      }
+
+      #${ROOT_ID} .sc-message {
+        font-size: 14px;
+        line-height: 1.5;
+        color: #0f1111;
+      }
+
+      #${ROOT_ID} .sc-meta {
+        font-size: 12px;
+        color: #565959;
+        margin-top: 8px;
+      }
+
+      #${ROOT_ID} .sc-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      #${ROOT_ID} .sc-button,
+      #${ROOT_ID} .sc-link {
+        appearance: none;
+        border: 1px solid #d5d9d9;
+        border-radius: 999px;
+        background: #ffffff;
+        color: #0f1111;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 7px 12px;
+        text-decoration: none;
+      }
+
+      #${ROOT_ID} .sc-button:hover,
+      #${ROOT_ID} .sc-link:hover {
+        background: #f7fafa;
+      }
+
+      #${ROOT_ID}[data-state="error"] {
+        border-left-color: #b12704;
+      }
+
+      #${ROOT_ID}[data-state="loading"] {
+        border-left-color: #007185;
+      }
     `;
-    
-    return loadingDiv;
-}
 
-// エラー表示を行う関数
-function displayErrorResult(errorMessage) {
-    // 既存の結果要素を削除
-    const existingResult = document.querySelector('#sakura-checker-result');
-    if (existingResult) {
-        existingResult.remove();
+    document.head.appendChild(style);
+  }
+
+  function findInsertionPoint() {
+    return (
+      document.querySelector("#title_feature_div") ||
+      document.querySelector("#titleSection") ||
+      document.querySelector("#centerCol") ||
+      document.querySelector("#ppd")
+    );
+  }
+
+  function ensureRoot() {
+    ensureStyles();
+
+    let root = document.getElementById(ROOT_ID);
+    if (root && document.contains(root)) {
+      return root;
     }
-    
-    // エラー表示要素を作成
-    const errorElement = createErrorElement(errorMessage);
-    
-    // 挿入位置を特定
+
+    root = document.createElement("section");
+    root.id = ROOT_ID;
+
     const insertionPoint = findInsertionPoint();
-    
-    if (insertionPoint) {
-        insertionPoint.insertAdjacentElement('afterend', errorElement);
-    } else {
-        document.body.insertAdjacentElement('afterbegin', errorElement);
+    if (insertionPoint && insertionPoint.parentNode) {
+      insertionPoint.insertAdjacentElement("afterend", root);
+    } else if (document.body) {
+      document.body.insertAdjacentElement("afterbegin", root);
     }
-}
 
-// エラー要素を作成する関数
-function createErrorElement(errorMessage) {
-    const errorDiv = document.createElement('div');
-    errorDiv.id = 'sakura-checker-result';
-    
-    errorDiv.innerHTML = `
-        <div style="
-            background-color: #fff3cd;
-            border: 2px solid #ffc107;
-            border-radius: 8px;
-            padding: 12px;
-            margin: 10px 0;
-            font-family: 'Arial', sans-serif;
-            font-size: 14px;
-            line-height: 1.4;
-            color: #333;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: relative;
-            z-index: 1000;
-        ">
-            <div style="
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin-bottom: 8px;
-            ">
-                <span style="
-                    background-color: #ffc107;
-                    color: #212529;
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 12px;
-                ">
-                    ⚠️ サクラチェック
-                </span>
-                <span style="
-                    font-size: 14px;
-                    color: #856404;
-                ">
-                    エラー
-                </span>
-            </div>
-            <div style="
-                font-size: 13px;
-                color: #555;
-                margin-bottom: 8px;
-            ">
-                ${errorMessage}
-            </div>
-            <div style="
-                font-size: 11px;
-                color: #999;
-                text-align: right;
-            ">
-                Powered by sakura-checker.jp
-            </div>
-        </div>
-    `;
-    
-    return errorDiv;
-}
+    return root;
+  }
 
-// 両方のスコアを表示する関数
-function displayDualScoreResult(scoreRating, sakuraPercentage, asin) {
-    console.log('Amazon Display Sakura Checker: 両スコア表示準備中', {
-        scoreRating: scoreRating,
-        sakuraPercentage: sakuraPercentage
+  function clearRoot(root) {
+    while (root.firstChild) {
+      root.removeChild(root.firstChild);
+    }
+  }
+
+  function appendHeader(root, statusText) {
+    const header = document.createElement("div");
+    header.className = "sc-header";
+
+    const badge = document.createElement("span");
+    badge.className = "sc-badge";
+    badge.textContent = "サクラチェッカー";
+
+    const status = document.createElement("span");
+    status.className = "sc-status";
+    status.textContent = statusText;
+
+    header.appendChild(badge);
+    header.appendChild(status);
+    root.appendChild(header);
+  }
+
+  function appendActions(root, options) {
+    const actions = document.createElement("div");
+    actions.className = "sc-actions";
+
+    if (options.onRetry) {
+      const retryButton = document.createElement("button");
+      retryButton.type = "button";
+      retryButton.className = "sc-button";
+      retryButton.textContent = "再試行";
+      retryButton.addEventListener("click", options.onRetry);
+      actions.appendChild(retryButton);
+    }
+
+    if (options.sourceUrl) {
+      const openLink = document.createElement("a");
+      openLink.className = "sc-link";
+      openLink.href = options.sourceUrl;
+      openLink.target = "_blank";
+      openLink.rel = "noopener noreferrer";
+      openLink.textContent = "サクラチェッカーを開く";
+      actions.appendChild(openLink);
+    }
+
+    root.appendChild(actions);
+  }
+
+  function renderLoading() {
+    const root = ensureRoot();
+    root.dataset.state = "loading";
+    clearRoot(root);
+    appendHeader(root, "取得中");
+
+    const message = document.createElement("div");
+    message.className = "sc-message";
+    message.textContent =
+      "サクラチェッカーからスコア画像を取得しています。";
+    root.appendChild(message);
+  }
+
+  function renderSuccess(payload, onRetry) {
+    const root = ensureRoot();
+    root.dataset.state = "success";
+    clearRoot(root);
+    appendHeader(root, payload.cached ? "キャッシュ表示" : "取得完了");
+
+    const score = document.createElement("div");
+    score.className = "sc-score";
+
+    for (const image of payload.score.images) {
+      const img = document.createElement("img");
+      img.src = image.src;
+      img.alt = image.alt || "サクラチェッカーのスコア";
+      score.appendChild(img);
+    }
+
+    const suffix = document.createElement("span");
+    suffix.className = "sc-suffix";
+    suffix.textContent = payload.score.suffix;
+    score.appendChild(suffix);
+    root.appendChild(score);
+
+    const message = document.createElement("div");
+    message.className = "sc-message";
+    message.textContent =
+      "サクラチェッカー上で表示されているスコア画像をそのまま表示しています。";
+    root.appendChild(message);
+
+    const meta = document.createElement("div");
+    meta.className = "sc-meta";
+    meta.textContent = `取得日時: ${new Date(payload.fetchedAt).toLocaleString("ja-JP")}`;
+    root.appendChild(meta);
+
+    appendActions(root, { onRetry, sourceUrl: payload.sourceUrl });
+  }
+
+  function renderError(payload, onRetry) {
+    const root = ensureRoot();
+    root.dataset.state = "error";
+    clearRoot(root);
+    appendHeader(root, "取得失敗");
+
+    const message = document.createElement("div");
+    message.className = "sc-message";
+    message.textContent =
+      payload && payload.message
+        ? payload.message
+        : "サクラチェッカーのスコア画像を取得できませんでした。";
+    root.appendChild(message);
+
+    appendActions(root, {
+      onRetry,
+      sourceUrl: payload && payload.sourceUrl ? payload.sourceUrl : null,
     });
-    
-    // 既存の結果要素を削除
-    const existingResult = document.querySelector('#sakura-checker-result');
-    if (existingResult) {
-        existingResult.remove();
-    }
-    
-    // 結果表示要素を作成
-    const resultElement = createDualScoreElement(scoreRating, sakuraPercentage, asin);
-    
-    // 挿入位置を特定
-    const insertionPoint = findInsertionPoint();
-    
-    if (insertionPoint) {
-        insertionPoint.insertAdjacentElement('afterend', resultElement);
-    } else {
-        // フォールバック: body要素の最初に追加
-        document.body.insertAdjacentElement('afterbegin', resultElement);
-    }
-}
+  }
 
-// 両方のスコア表示要素を作成する関数
-function createDualScoreElement(scoreRating, sakuraPercentage, asin) {
-    const resultDiv = document.createElement('div');
-    resultDiv.id = 'sakura-checker-result';
-    
-    // サクラ度に応じた色とメッセージを決定（パーセンテージが優先）
-    let color, backgroundColor, message, riskLevel;
-    
-    if (sakuraPercentage !== null) {
-        const scoreInfo = getSakuraScoreInfo(sakuraPercentage);
-        color = scoreInfo.color;
-        backgroundColor = scoreInfo.backgroundColor;
-        message = scoreInfo.message;
-        riskLevel = scoreInfo.riskLevel;
-    } else {
-        // パーセンテージがない場合はニュートラルな色
-        color = '#6c757d';
-        backgroundColor = '#f8f9fa';
-        message = 'スコア情報を取得しました。';
-        riskLevel = '情報';
+  function remove() {
+    const root = document.getElementById(ROOT_ID);
+    if (root) {
+      root.remove();
     }
-    
-    // 表示するスコア情報を構築
-    let scoresDisplay = '';
-    
-    if (sakuraPercentage !== null) {
-        // sakuraPercentageが画像オブジェクトかどうかをチェック
-        if (typeof sakuraPercentage === 'object' && sakuraPercentage.type === 'image') {
-            scoresDisplay += `
-                <span style="
-                    font-size: 16px;
-                    font-weight: bold;
-                    color: ${color};
-                    margin-right: 10px;
-                    display: flex;
-                    align-items: center;
-                    gap: 5px;
-                ">
-                    サクラ度: 
-                    <img src="${sakuraPercentage.imageData}" style="display: inline; vertical-align: middle; max-height: 20px;">
-                    ${sakuraPercentage.suffix}
-                </span>
-            `;
-        } else if (typeof sakuraPercentage === 'object' && sakuraPercentage.type === 'html') {
-            scoresDisplay += `
-                <span style="
-                    font-size: 16px;
-                    font-weight: bold;
-                    color: ${color};
-                    margin-right: 10px;
-                    display: flex;
-                    align-items: center;
-                    gap: 5px;
-                ">
-                    サクラ度: ${sakuraPercentage.htmlContent}
-                </span>
-            `;
-        } else {
-            scoresDisplay += `
-                <span style="
-                    font-size: 16px;
-                    font-weight: bold;
-                    color: ${color};
-                    margin-right: 10px;
-                ">
-                    サクラ度: ${sakuraPercentage}%
-                </span>
-            `;
-        }
-    }
-    
-    if (scoreRating !== null) {
-        console.log('UI Display: scoreRating詳細:', {
-            value: scoreRating,
-            type: typeof scoreRating,
-            isObject: typeof scoreRating === 'object',
-            hasTypeProperty: scoreRating && scoreRating.type,
-            typeProperty: scoreRating && scoreRating.type
-        });
-        
-        // scoreRatingが画像オブジェクトかどうかをチェック
-        if (typeof scoreRating === 'object' && scoreRating.type === 'image') {
-            console.log('UI Display: base64画像として表示:', scoreRating);
-            scoresDisplay += `
-                <span style="
-                    font-size: 14px;
-                    color: #495057;
-                    background-color: #e9ecef;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 3px;
-                    vertical-align: middle;
-                ">
-                    スコア:&nbsp;
-                    <img src="${scoreRating.imageData}" style="display: inline-block; vertical-align: middle; height: 16px; width: auto; border: 1px solid #ccc;">
-                    ${scoreRating.suffix}
-                </span>
-            `;
-        } else if (typeof scoreRating === 'object' && scoreRating.type === 'html') {
-            console.log('UI Display: HTML画像として表示:', scoreRating);
-            scoresDisplay += `
-                <span style="
-                    font-size: 14px;
-                    color: #495057;
-                    background-color: #e9ecef;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 3px;
-                    vertical-align: middle;
-                ">
-                    スコア: ${scoreRating.htmlContent}
-                </span>
-            `;
-        } else {
-            scoresDisplay += `
-                <span style="
-                    font-size: 14px;
-                    color: #495057;
-                    background-color: #e9ecef;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                ">
-                    スコア: ${scoreRating}
-                </span>
-            `;
-        }
-    }
-    
-    if (!scoresDisplay) {
-        scoresDisplay = `
-            <span style="
-                font-size: 14px;
-                color: #6c757d;
-            ">
-                スコア情報なし
-            </span>
-        `;
-    }
-    
-    resultDiv.innerHTML = `
-        <div style="
-            background-color: ${backgroundColor};
-            border: 2px solid ${color};
-            border-radius: 8px;
-            padding: 12px;
-            margin: 10px 0;
-            font-family: 'Arial', sans-serif;
-            font-size: 14px;
-            line-height: 1.4;
-            color: #333;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: relative;
-            z-index: 1000;
-        ">
-            <div style="
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                margin-bottom: 8px;
-            ">
-                <span style="
-                    background-color: ${color};
-                    color: white;
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-size: 12px;
-                ">
-                    🌸 サクラチェック
-                </span>
-                ${scoresDisplay}
-                ${sakuraPercentage !== null ? `
-                <span style="
-                    font-size: 12px;
-                    color: #666;
-                ">
-                    ${riskLevel}
-                </span>
-                ` : ''}
-            </div>
-            <div style="
-                font-size: 13px;
-                color: #555;
-                margin-bottom: 8px;
-            ">
-                ${message}
-            </div>
-            <div style="
-                font-size: 11px;
-                color: #999;
-                text-align: right;
-            ">
-                Powered by sakura-checker.jp
-            </div>
-        </div>
-    `;
-    
-    return resultDiv;
-}
+  }
 
-// サクラ度に応じた表示情報を取得する関数
-function getSakuraScoreInfo(sakuraScore) {
-    if (sakuraScore >= 80) {
-        return {
-            color: '#dc3545',
-            backgroundColor: '#fff5f5',
-            message: 'サクラの可能性が非常に高いです。レビューに注意してください。',
-            riskLevel: '危険'
-        };
-    } else if (sakuraScore >= 60) {
-        return {
-            color: '#fd7e14',
-            backgroundColor: '#fff8f0',
-            message: 'サクラの可能性があります。レビューを慎重に確認してください。',
-            riskLevel: '注意'
-        };
-    } else if (sakuraScore >= 40) {
-        return {
-            color: '#ffc107',
-            backgroundColor: '#fffef0',
-            message: 'レビューに多少の疑問があります。',
-            riskLevel: '軽微'
-        };
-    } else {
-        return {
-            color: '#28a745',
-            backgroundColor: '#f8fff8',
-            message: 'レビューは比較的信頼できると思われます。',
-            riskLevel: '安全'
-        };
-    }
-}
-
-// 結果を挿入する位置を特定する関数
-function findInsertionPoint() {
-    // 商品タイトルの後に挿入を試みる
-    const productTitle = document.querySelector('#productTitle');
-    if (productTitle) {
-        return productTitle.parentElement;
-    }
-    
-    // 価格情報の前に挿入を試みる
-    const priceElement = document.querySelector('#priceblock_dealprice, #priceblock_ourprice, .a-price');
-    if (priceElement) {
-        return priceElement.parentElement;
-    }
-    
-    // 商品情報エリアを探す
-    const productInfo = document.querySelector('#feature-bullets, #productDescription');
-    if (productInfo) {
-        return productInfo.parentElement;
-    }
-    
-    // フォールバック: レビューセクションの前
-    const reviewSection = document.querySelector('#reviews, #reviewsMedley');
-    if (reviewSection) {
-        return reviewSection.parentElement;
-    }
-    
-    return null;
-}
-
-// エクスポート（グローバルスコープで利用可能にする）
-window.UiDisplay = {
-    displayLoadingResult,
-    displayErrorResult,
-    displayDualScoreResult,
-    createLoadingElement,
-    createErrorElement,
-    createDualScoreElement,
-    getSakuraScoreInfo,
-    findInsertionPoint
-};
+  window.UiDisplay = {
+    ensureRoot,
+    remove,
+    renderError,
+    renderLoading,
+    renderSuccess,
+  };
+})();

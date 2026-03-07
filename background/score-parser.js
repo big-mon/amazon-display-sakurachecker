@@ -1,157 +1,257 @@
-// スコア解析機能モジュール
-// sakura-checker.jpから画像を直接抽出
+(function (root, factory) {
+  const exportsObject = factory();
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = exportsObject;
+  }
+  root.ScoreParser = exportsObject;
+})(typeof self !== "undefined" ? self : globalThis, function () {
+  const REVIEW_WRAP_MARKER = '<div class="item-review-wrap">';
+  const ITEM_BUTTON_MARKER = '<p class="item-btn">';
+  const ITEM_RATING_MARKER = '<p class="item-rating">';
 
-function extractScoreFromImages(html) {
-    try {
-        console.log('Background Script: base64画像からスコア抽出開始');
-        
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        
-        let scoreImages = [];
-        let sakuraImages = [];
-        
-        const scoreSection = Array.from(doc.querySelectorAll('*')).find(el => 
-            el.textContent && el.textContent.includes('/5') && !el.textContent.includes('%')
-        );
-        
-        if (scoreSection) {
-            const scoreSpans = scoreSection.querySelectorAll('span');
-            for (const span of scoreSpans) {
-                const spanImages = span.querySelectorAll('img[src^="data:image/png;base64"]');
-                if (spanImages.length > 0 && span.textContent.includes('/5')) {
-                    const parentElement = span.parentElement;
-                    if (parentElement) {
-                        const allImages = parentElement.querySelectorAll('img[src^="data:image/png;base64"]');
-                        scoreImages = Array.from(allImages).map(img => ({
-                            src: img.src,
-                            alt: img.alt || '',
-                            fullUrl: img.src
-                        }));
-                        break;
-                    }
-                }
-            }
-            
-            if (scoreImages.length === 0) {
-                const base64Images = scoreSection.querySelectorAll('img[src^="data:image/png;base64"]');
-                console.log('Background Script: スコア評価セクション内の画像数:', base64Images.length);
-                
-                scoreImages = Array.from(base64Images).slice(0, 5).map(img => ({
-                    src: img.src,
-                    alt: img.alt || '',
-                    fullUrl: img.src
-                }));
-            }
-        }
-        
-        const sakuraSection = Array.from(doc.querySelectorAll('*')).find(el => 
-            el.textContent && el.textContent.includes('%') && el.textContent.includes('です。')
-        );
-        
-        if (sakuraSection) {
-            const sakuraSpans = sakuraSection.querySelectorAll('span');
-            for (const span of sakuraSpans) {
-                const spanImages = span.querySelectorAll('img[src^="data:image/png;base64"]');
-                if (spanImages.length > 0 && span.textContent.includes('%')) {
-                    sakuraImages = Array.from(spanImages).map(img => ({
-                        src: img.src,
-                        alt: img.alt || '',
-                        fullUrl: img.src
-                    }));
-                    break;
-                }
-            }
-            
-            if (sakuraImages.length === 0) {
-                const base64Images = sakuraSection.querySelectorAll('img[src^="data:image/png;base64"]');
-                console.log('Background Script: サクラ度セクション内の画像数:', base64Images.length);
-                
-                sakuraImages = Array.from(base64Images).slice(0, 2).map(img => ({
-                    src: img.src,
-                    alt: img.alt || '',
-                    fullUrl: img.src
-                }));
-            }
-        }
-        
-        console.log('Background Script: 抽出されたスコア評価画像:', scoreImages.length);
-        console.log('Background Script: 抽出されたサクラ度画像:', sakuraImages.length);
-        
-        return {
-            sakuraImages: sakuraImages,
-            scoreImages: scoreImages
-        };
-        
-    } catch (error) {
-        console.error('Background Script: 画像抽出エラー:', error);
-        return { sakuraImages: [], scoreImages: [] };
-    }
-}
+  function getReviewWrapRanges(html) {
+    const starts = [];
+    let startIndex = -1;
 
-// 複数の画像を組み合わせて表示用のHTMLを作成
-function createImageDisplayHTML(images, suffix) {
-    if (!images || images.length === 0) {
-        return null;
+    while ((startIndex = html.indexOf(REVIEW_WRAP_MARKER, startIndex + 1)) !== -1) {
+      starts.push(startIndex);
     }
-    
-    const imageElements = images.map(img => 
-        `<img src="${img.fullUrl}" style="display: inline-block; height: 16px; vertical-align: middle; margin: 0 1px;" alt="${img.alt}">`
-    ).join('');
-    
+
+    return starts.map((start, index) => {
+      const nextStart = starts[index + 1] ?? html.length;
+      const buttonIndex = html.indexOf(ITEM_BUTTON_MARKER, start);
+      const end =
+        buttonIndex !== -1 && buttonIndex < nextStart ? buttonIndex : nextStart;
+      return { start, end };
+    });
+  }
+
+  function findPrimaryProductBlock(html, asin) {
+    const markers = [
+      `https://www.amazon.co.jp/dp/${asin}`,
+      `https://www.amazon.co.jp/gp/product/${asin}`,
+      `/dp/${asin}`,
+      `/gp/product/${asin}`,
+    ];
+
+    for (const range of getReviewWrapRanges(html)) {
+      const block = html.slice(range.start, range.end);
+      if (markers.some((marker) => block.includes(marker))) {
+        return block;
+      }
+    }
+
+    return null;
+  }
+
+  function findRatingMarkup(block) {
+    const start = block.indexOf(ITEM_RATING_MARKER);
+    if (start === -1) {
+      return null;
+    }
+
+    const end = block.indexOf("</p>", start);
+    if (end === -1) {
+      return null;
+    }
+
+    return block.slice(start, end + 4);
+  }
+
+  function extractImageTags(markup) {
+    const tags = [];
+    let searchIndex = 0;
+
+    while (searchIndex < markup.length) {
+      const start = markup.indexOf("<img", searchIndex);
+      if (start === -1) {
+        break;
+      }
+
+      let inQuote = null;
+      let end = start;
+
+      for (; end < markup.length; end += 1) {
+        const character = markup[end];
+        if ((character === '"' || character === "'") && inQuote === null) {
+          inQuote = character;
+          continue;
+        }
+        if (character === inQuote) {
+          inQuote = null;
+          continue;
+        }
+        if (character === ">" && inQuote === null) {
+          break;
+        }
+      }
+
+      if (end >= markup.length) {
+        break;
+      }
+
+      tags.push(markup.slice(start, end + 1));
+      searchIndex = end + 1;
+    }
+
+    return tags;
+  }
+
+  function parseAttributes(tag) {
+    const attributes = {};
+    const attributePattern = /([^\s=/>]+)="([^"]*)"/g;
+    let match = null;
+
+    while ((match = attributePattern.exec(tag)) !== null) {
+      attributes[match[1]] = match[2];
+    }
+
+    return attributes;
+  }
+
+  function decodeBase64ToText(base64Text) {
+    if (typeof atob === "function") {
+      return atob(base64Text);
+    }
+
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(base64Text, "base64").toString("utf8");
+    }
+
+    throw new Error("No base64 decoder is available.");
+  }
+
+  function restoreObfuscatedValue(scrambled, insertLength, prefixLength) {
+    let n = insertLength;
+    const totalLength = scrambled.length;
+    const originalLength = totalLength - n;
+    let prefixStart = originalLength - prefixLength;
+
+    if (prefixStart < 0) {
+      prefixStart = 0;
+    }
+    if (prefixStart > originalLength) {
+      prefixStart = originalLength;
+    }
+    if (n > totalLength) {
+      n = totalLength;
+    }
+
+    let inserted = "";
+    let before = "";
+    let after = "";
+
+    if (originalLength >= 0 && prefixStart <= originalLength) {
+      inserted = scrambled.substr(prefixStart, n);
+      before = scrambled.substr(0, prefixStart);
+      after = scrambled.substr(prefixStart + n);
+    } else if (originalLength < 0 && totalLength > 0) {
+      inserted = scrambled.substr(0, n);
+    }
+
+    return inserted + before + after;
+  }
+
+  function decodeObfuscatedImageTag(tag) {
+    const attributes = parseAttributes(tag);
+    const onload = attributes.onload;
+
+    if (!onload) {
+      if (attributes.src && attributes.src.startsWith("data:image/")) {
+        return { src: attributes.src, alt: attributes.alt || "" };
+      }
+      return null;
+    }
+
+    const scrambledAttributeMatch = onload.match(
+      /var _[A-Za-z0-9]+=\s*this(?:\[[^\]]+\])+\('([^']+)'\)/
+    );
+    if (!scrambledAttributeMatch) {
+      return null;
+    }
+
+    const scrambledAttributeName = scrambledAttributeMatch[1];
+    const numericAssignments = Array.from(
+      onload
+        .slice(scrambledAttributeMatch.index)
+        .matchAll(/var _[A-Za-z0-9]+=(\d+);/g),
+      (match) => Number(match[1])
+    );
+
+    if (numericAssignments.length < 2) {
+      return null;
+    }
+
+    const scrambledValue = attributes[scrambledAttributeName];
+    if (!scrambledValue) {
+      return null;
+    }
+
+    const restoredBase64 = restoreObfuscatedValue(
+      scrambledValue,
+      numericAssignments[0],
+      numericAssignments[1]
+    );
+    const decodedSource = decodeBase64ToText(restoredBase64);
+
+    if (!decodedSource.startsWith("data:image/")) {
+      return null;
+    }
+
     return {
-        type: 'html',
-        htmlContent: imageElements + suffix,
-        suffix: suffix
+      src: decodedSource,
+      alt: attributes.alt || "",
     };
-}
+  }
 
-// n/5 形式のスコア解析関数（簡素化版）
-function parseScoreRating(html) {
-    try {
-        console.log('Background Script: n/5スコア解析開始');
-        
-        const imageData = extractScoreFromImages(html);
-        
-        if (imageData.scoreImages && imageData.scoreImages.length > 0) {
-            console.log('Background Script: スコア画像を返します');
-            return createImageDisplayHTML(imageData.scoreImages, '/5');
-        }
-        
-        console.log('Background Script: スコア画像が見つかりませんでした');
-        return null;
-        
-    } catch (error) {
-        console.error('Background Script: n/5スコア解析エラー:', error);
-        return null;
+  function parseVisualScore(html, asin) {
+    const productBlock = findPrimaryProductBlock(html, asin);
+    if (!productBlock) {
+      return {
+        ok: false,
+        code: "not_found",
+        message: `Could not find a Sakura Checker block for ASIN ${asin}.`,
+      };
     }
-}
 
-// n% 形式のサクラ度解析関数（簡素化版）
-function parseSakuraPercentage(html) {
-    try {
-        console.log('Background Script: n%サクラ度解析開始');
-        
-        const imageData = extractScoreFromImages(html);
-        
-        if (imageData.sakuraImages && imageData.sakuraImages.length > 0) {
-            console.log('Background Script: サクラ度画像を返します');
-            return createImageDisplayHTML(imageData.sakuraImages, '%');
-        }
-        
-        console.log('Background Script: サクラ度画像が見つかりませんでした');
-        return null;
-        
-    } catch (error) {
-        console.error('Background Script: n%サクラ度解析エラー:', error);
-        return null;
+    const ratingMarkup = findRatingMarkup(productBlock);
+    if (!ratingMarkup) {
+      return {
+        ok: false,
+        code: "parse_error",
+        message: "Could not locate the item-rating markup.",
+      };
     }
-}
 
-// エクスポート（Service Worker環境では self を使用）
-self.ScoreParser = {
-    extractScoreFromImages,
-    createImageDisplayHTML,
-    parseScoreRating,
-    parseSakuraPercentage
-};
+    const images = extractImageTags(ratingMarkup)
+      .map(decodeObfuscatedImageTag)
+      .filter(Boolean);
+
+    if (!images.length) {
+      return {
+        ok: false,
+        code: "parse_error",
+        message: "Could not decode the score images from the rating markup.",
+      };
+    }
+
+    return {
+      ok: true,
+      score: {
+        kind: "visual-image",
+        images,
+        suffix: "/5",
+      },
+    };
+  }
+
+  return {
+    decodeObfuscatedImageTag,
+    extractImageTags,
+    findPrimaryProductBlock,
+    findRatingMarkup,
+    parseAttributes,
+    parseVisualScore,
+    restoreObfuscatedValue,
+  };
+});
