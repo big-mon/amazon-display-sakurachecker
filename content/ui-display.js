@@ -54,7 +54,7 @@
         display: flex;
         align-items: center;
         gap: 8px 12px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         min-height: 28px;
       }
 
@@ -87,13 +87,6 @@
         max-height: 32px;
         width: auto;
         display: block;
-      }
-
-      #${ROOT_ID} .sc-verdict-text {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        line-height: 1.35;
       }
 
       #${ROOT_ID} .sc-status-value {
@@ -204,7 +197,7 @@
   }
 
   function createVerdictNode(verdict) {
-    if (!verdict || !verdict.image || !verdict.lines || !verdict.lines.length) {
+    if (!verdict || !verdict.image) {
       return null;
     }
 
@@ -216,16 +209,6 @@
     icon.alt = verdict.image.alt || "サクラチェッカーの判定";
     verdictNode.appendChild(icon);
 
-    const text = document.createElement("div");
-    text.className = "sc-verdict-text";
-
-    for (const line of verdict.lines) {
-      const lineNode = document.createElement("span");
-      lineNode.textContent = line;
-      text.appendChild(lineNode);
-    }
-
-    verdictNode.appendChild(text);
     return verdictNode;
   }
 
