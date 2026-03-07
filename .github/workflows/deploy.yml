@@ -1,0 +1,87 @@
+name: Deploy to Chrome Web Store
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: version-check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            echo "version-changed=false" >> "$GITHUB_OUTPUT"
+            echo "No previous commit available, skipping deployment"
+            exit 0
+          fi
+
+          if git diff --name-only HEAD~1 HEAD | grep -q '^package\.json$' && \
+            git diff HEAD~1 HEAD -- package.json | grep -q '"version"'; then
+            echo "version-changed=true" >> "$GITHUB_OUTPUT"
+            echo "Version changed, proceeding with deployment"
+          else
+            echo "version-changed=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged, skipping deployment"
+          fi
+
+      - name: Setup Node.js
+        if: steps.version-check.outputs.version-changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.version-check.outputs.version-changed == 'true'
+        run: npm ci
+
+      - name: Run tests
+        if: steps.version-check.outputs.version-changed == 'true'
+        run: npm test
+
+      - name: Sync manifest version
+        if: steps.version-check.outputs.version-changed == 'true'
+        run: npm run sync-version
+
+      - name: Create extension zip
+        if: steps.version-check.outputs.version-changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          staging_dir="$(mktemp -d)"
+          cp manifest.json "$staging_dir/"
+          cp background.js "$staging_dir/"
+          cp content.js "$staging_dir/"
+          cp -R background "$staging_dir/background"
+          cp -R content "$staging_dir/content"
+          cp -R icons "$staging_dir/icons"
+
+          (
+            cd "$staging_dir"
+            zip -r "$GITHUB_WORKSPACE/extension.zip" .
+          )
+
+      - name: Upload to Chrome Web Store
+        if: steps.version-check.outputs.version-changed == 'true'
+        uses: mnao305/chrome-extension-upload@v5.0.0
+        with:
+          file-path: extension.zip
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          publish: true
