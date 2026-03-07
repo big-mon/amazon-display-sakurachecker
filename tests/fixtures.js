@@ -57,7 +57,50 @@ const sampleHtml = `
   </html>
 `;
 
+const injectedScoreMarkup = `
+  <div class="item-review-after">
+    <p class="item-logo"><img src="/images/logo_s.png" alt="サクラチェッカー"></p>
+    <p class="item-rating"><span>${sampleImageTag}${otherImageTag}</span>/5</p>
+  </div>
+  <div class="item-review-level">
+    <p class="item-rv-score">Amazonと同等のスコア</p>
+  </div>
+`;
+
+const injectedPayload = Buffer.from(encodeURIComponent(injectedScoreMarkup), "utf8").toString(
+  "base64"
+);
+
+const injectedDecodedScript = `
+  var injectedPayload = '${injectedPayload}';
+  $(function () {
+    $("#dynamic-score-anchor").before(decodeURIComponent(atob(injectedPayload)));
+    $("#dynamic-score-anchor").remove();
+  });
+`;
+
+const injectedScript = `
+  var _0x = "eval";
+  window[_0x]('${Buffer.from(injectedDecodedScript, "utf8").toString("base64")}');
+`;
+
+const htmlWithInjectedScore = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      ${targetReviewWrap}
+      <div class="item-review-box"><span id="dynamic-score-anchor"></span></div>
+      <script>${injectedScript}</script>
+    </body>
+  </html>
+`;
+
 module.exports = {
+  htmlWithInjectedScore,
+  injectedDecodedScript,
+  injectedPayload,
+  injectedScoreMarkup,
+  injectedScript,
   otherReviewWrap,
   sampleHtml,
   sampleImageTag,

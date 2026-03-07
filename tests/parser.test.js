@@ -22,6 +22,25 @@ test("parseVisualScore selects the block matching the requested ASIN", () => {
   assert.equal(result.score.images[0].alt, "score");
 });
 
+test("extractInjectedHtmlSnippets decodes nested inline script payloads", () => {
+  const snippets = parser.extractInjectedHtmlSnippets(fixtures.htmlWithInjectedScore);
+
+  assert.equal(snippets.length, 1);
+  assert.match(snippets[0], /item-review-level/);
+  assert.match(snippets[0], /Amazonと同等のスコア/);
+});
+
+test("parseVisualScore prefers the injected main score markup", () => {
+  const result = parser.parseVisualScore(fixtures.htmlWithInjectedScore, "B08N5WRWNW");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.images.length, 2);
+  assert.deepEqual(
+    result.score.images.map((image) => image.alt),
+    ["score", "other"]
+  );
+});
+
 test("parseVisualScore returns not_found when no matching ASIN exists", () => {
   const result = parser.parseVisualScore(fixtures.sampleHtml, "B111111111");
 

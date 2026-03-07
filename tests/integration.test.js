@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const apiClient = require("../background/api-client.js");
 
-const knownAsins = ["B08N5WRWNW", "B0921THFXZ", "B0CP4V4RPL"];
+const knownAsins = ["B08N5WRWNW", "B0921THFXZ", "B0CP4V4RPL", "B095JGJCC7"];
 
 function liveFetch(url, options) {
   return fetch(url, {
