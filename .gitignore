@@ -35,6 +35,7 @@ Thumbs.db
 *.crx
 *.pem
 .web-extension-id
+extension.zip
 
 # Logs
 logs/
