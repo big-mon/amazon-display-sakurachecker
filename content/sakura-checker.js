@@ -32,7 +32,7 @@
 
       this.currentAsin = asin;
       this.inFlight = true;
-      window.UiDisplay.renderLoading();
+      window.UiDisplay.renderLoading(`https://sakura-checker.jp/search/${asin}/`);
 
       try {
         const response = await chrome.runtime.sendMessage({
@@ -47,9 +47,9 @@
         }
 
         if (response && response.ok) {
-          window.UiDisplay.renderSuccess(response, () => this.refreshForCurrentPage(true));
+          window.UiDisplay.renderSuccess(response);
         } else {
-          window.UiDisplay.renderError(response, () => this.refreshForCurrentPage(true));
+          window.UiDisplay.renderError(response);
         }
       } catch (error) {
         window.UiDisplay.renderError(
@@ -61,8 +61,7 @@
                 ? error.message
                 : "Failed to talk to the background service worker.",
             sourceUrl: `https://sakura-checker.jp/search/${asin}/`,
-          },
-          () => this.refreshForCurrentPage(true)
+          }
         );
       } finally {
         this.inFlight = false;
