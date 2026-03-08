@@ -11,6 +11,7 @@ This repository uses GitHub Actions to submit the Chrome extension to the Chrome
 1. Open the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole).
 2. Create the extension listing and complete the initial manual upload.
 3. Copy the extension ID from the dashboard URL.
+4. Copy the publisher ID used by the Chrome Web Store API.
 
 ### 2. Create Google API credentials
 
@@ -34,9 +35,12 @@ The refresh token is the value used by GitHub Actions.
 Add these repository secrets in GitHub: `Settings -> Secrets and variables -> Actions`.
 
 - `CHROME_EXTENSION_ID`
+- `CHROME_PUBLISHER_ID`
 - `CHROME_CLIENT_ID`
 - `CHROME_CLIENT_SECRET`
 - `CHROME_REFRESH_TOKEN`
+
+The workflow now calls the Chrome Web Store API directly so upload failures include the API response body and a `fetchStatus` snapshot in the GitHub Actions log.
 
 ## Release flow
 
