@@ -28,8 +28,13 @@ jobs:
             exit 0
           fi
 
-          if git diff --name-only HEAD~1 HEAD | grep -q '^package\.json$' && \
-            git diff --unified=0 HEAD~1 HEAD -- package.json | grep -qE '^[+-][[:space:]]*"version"[[:space:]]*:'; then
+          previous_version="$(git show HEAD~1:package.json | python3 -c 'import json, sys; print(json.load(sys.stdin)[\"version\"])')"
+          current_version="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path(\"package.json\").read_text(encoding=\"utf-8\"))[\"version\"])')"
+
+          echo "Previous package.json version: ${previous_version}"
+          echo "Current package.json version: ${current_version}"
+
+          if [ "$previous_version" != "$current_version" ]; then
             echo "version-changed=true" >> "$GITHUB_OUTPUT"
             echo "Version changed, proceeding with deployment"
           else
