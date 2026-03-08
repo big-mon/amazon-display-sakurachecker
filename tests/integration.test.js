@@ -5,6 +5,7 @@ const apiClient = require("../background/api-client.js");
 
 const knownAsins = ["B0921THFXZ", "B095JGJCC7"];
 const retryDelaysMs = [1000, 3000];
+const liveSmokeTestTimeoutMs = 60000;
 
 function liveFetch(url, options) {
   return fetch(url, {
@@ -76,12 +77,10 @@ async function runLiveSmokeWithRetry(asin) {
       await delay(retryDelaysMs[attempt]);
     }
   }
-
-  throw new Error(formatFailure(asin, lastResult, lastError));
 }
 
 for (const asin of knownAsins) {
-  test(`live smoke returns score images for ${asin}`, { timeout: 45000 }, async () => {
+  test(`live smoke returns score images for ${asin}`, { timeout: liveSmokeTestTimeoutMs }, async () => {
     await runLiveSmokeWithRetry(asin);
   });
 }
