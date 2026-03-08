@@ -28,8 +28,8 @@ jobs:
             exit 0
           fi
 
-          previous_version="$(git show HEAD~1:package.json | python3 -c 'import json, sys; print(json.load(sys.stdin)[\"version\"])')"
-          current_version="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path(\"package.json\").read_text(encoding=\"utf-8\"))[\"version\"])')"
+          previous_version="$(git show HEAD~1:package.json | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          current_version="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path("package.json").read_text(encoding="utf-8"))["version"])')"
 
           echo "Previous package.json version: ${previous_version}"
           echo "Current package.json version: ${current_version}"
