@@ -106,6 +106,42 @@ const htmlWithInjectedScore = `
   </html>
 `;
 
+const realisticPageHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <head>
+      <title>Sakura Checker search result</title>
+    </head>
+    <body>
+      <main id="contents">
+        <section class="search-results">
+          <div class="item-review-wrap">
+            <div class="item-image">
+              <a
+                href="https://www.amazon.co.jp/gp/product/B095JGJCC7?ref_=sakura_checker"
+                target="_blank"
+                class="linkimg"
+              ></a>
+            </div>
+            <div class="item-info actual-layout">
+              <div class="item-review-box">
+                <div class="item-review-after">
+                  <p class="item-logo"><img src="/images/logo_s.png" alt="logo"></p>
+                  <p class="item-rating"><span>${sampleImageTag}${otherImageTag}</span>/5</p>
+                  <div class="item-review-level">
+                    <p class="item-rv-lv item-rv-lv03">${verdictImageTag}</p>
+                    <p class="item-rv-score">Amazonより<br>危険なスコア</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </body>
+  </html>
+`;
+
 module.exports = {
   htmlWithInjectedScore,
   injectedDecodedScript,
@@ -113,6 +149,7 @@ module.exports = {
   injectedScoreMarkup,
   injectedScript,
   otherReviewWrap,
+  realisticPageHtml,
   sampleHtml,
   sampleImageTag,
   scrambledScoreValue,

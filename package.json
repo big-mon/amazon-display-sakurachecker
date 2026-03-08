@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Chrome extension that shows Sakura Checker score images on Amazon.co.jp product pages.",
   "scripts": {
-    "test": "node --test tests/parser.test.js tests/api-client.test.js tests/integration.test.js tests/browser-compare.test.js",
+    "test": "node --test tests/parser.test.js tests/api-client.test.js",
+    "test:live": "node --test --test-concurrency=1 tests/integration.test.js",
+    "test:browser-compare": "node scripts/run-browser-compare.js",
+    "test:deploy": "npm run test && npm run test:live",
     "sync-version": "node scripts/sync-version.js",
     "zip": "node scripts/create-extension-zip.js"
   },

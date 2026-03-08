@@ -153,3 +153,18 @@ npm run zip
 ## ライセンス
 
 MIT
+
+## Test commands
+
+Use the following commands depending on the level of validation you need:
+
+- `npm test`: deterministic parser and API tests only
+- `npm run test:live`: live Sakura Checker smoke tests against a small fixed ASIN set
+- `npm run test:deploy`: deployment gate that runs both deterministic tests and the live smoke tests
+- `npm run test:browser-compare`: opt-in browser comparison for local investigation only
+
+`npm test` is intended to stay stable across repeated runs. The live smoke tests keep the external Sakura Checker integration covered without making pixel-perfect browser comparison a deployment requirement.
+
+### Browser compare
+
+`npm run test:browser-compare` enables the browser comparison test explicitly. It is useful for debugging parser/render drift, but it is not part of the GitHub Actions deployment gate because the upstream page can change between requests.
