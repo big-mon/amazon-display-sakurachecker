@@ -28,8 +28,13 @@ jobs:
             exit 0
           fi
 
-          if git diff --name-only HEAD~1 HEAD | grep -q '^package\.json$' && \
-            git diff HEAD~1 HEAD -- package.json | grep -q '"version"'; then
+          previous_version="$(git show HEAD~1:package.json | python3 -c 'import json, sys; print(json.load(sys.stdin)[\"version\"])')"
+          current_version="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path(\"package.json\").read_text(encoding=\"utf-8\"))[\"version\"])')"
+
+          echo "Previous package.json version: ${previous_version}"
+          echo "Current package.json version: ${current_version}"
+
+          if [ "$previous_version" != "$current_version" ]; then
             echo "version-changed=true" >> "$GITHUB_OUTPUT"
             echo "Version changed, proceeding with deployment"
           else
@@ -58,11 +63,12 @@ jobs:
 
       - name: Upload to Chrome Web Store
         if: steps.version-check.outputs.version-changed == 'true'
-        uses: mnao305/chrome-extension-upload@v5.0.0
-        with:
-          file-path: extension.zip
-          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
-          client-id: ${{ secrets.CHROME_CLIENT_ID }}
-          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
-          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
-          publish: true
+        env:
+          CHROME_EXTENSION_ZIP_PATH: extension.zip
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CHROME_PUBLISH: "true"
+        run: node scripts/upload-chrome-web-store.js
