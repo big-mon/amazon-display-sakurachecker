@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "サクラチェッカー表示 for Amazon.co.jp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Amazon.co.jpの商品ページで、サクラチェッカーの評価をその場で確認。別タブで調べる手間なく、購入判断をすばやくサポートします。",
   "permissions": [
     "storage"
@@ -28,7 +28,8 @@
     }
   ],
   "icons": {
-    "16": "icons/icon16.svg",
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   }
 }
