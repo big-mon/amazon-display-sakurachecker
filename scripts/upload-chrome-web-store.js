@@ -61,6 +61,10 @@ function formatBody(body) {
   return JSON.stringify(body, null, 2);
 }
 
+function isUploadPending(uploadState) {
+  return uploadState === "IN_PROGRESS" || uploadState === "UPLOAD_IN_PROGRESS";
+}
+
 async function requestJson(label, url, options) {
   const response = await fetch(url, options);
   const parsed = await parseResponse(response);
@@ -210,7 +214,7 @@ async function main() {
     console.log(formatBody(uploadResponse));
 
     let uploadState = uploadResponse && uploadResponse.uploadState;
-    if (uploadState === "IN_PROGRESS") {
+    if (isUploadPending(uploadState)) {
       const status = await waitForUploadResult(itemPath, accessToken);
       uploadState = status && status.lastAsyncUploadState;
     }
