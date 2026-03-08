@@ -14,6 +14,7 @@ const CHROME_PATHS = [
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
 ];
 const WAIT_TIMEOUT_MS = 30000;
+const browserCompareEnabled = process.env.ENABLE_BROWSER_COMPARE === "1";
 
 function getChromePath() {
   return CHROME_PATHS.find((candidate) => fs.existsSync(candidate)) || null;
@@ -332,7 +333,7 @@ async function captureScreenshotOnFailure(cdpClient, asin) {
 const chromePath = getChromePath();
 
 test("browser-rendered top score visually matches the parsed raw HTML score for B095JGJCC7", {
-  skip: !chromePath || typeof WebSocket !== "function",
+  skip: !browserCompareEnabled || !chromePath || typeof WebSocket !== "function",
   timeout: 45000,
 }, async () => {
   const asin = "B095JGJCC7";

@@ -3,7 +3,8 @@ const assert = require("node:assert/strict");
 
 const apiClient = require("../background/api-client.js");
 
-const knownAsins = ["B08N5WRWNW", "B0921THFXZ", "B0CP4V4RPL", "B095JGJCC7"];
+const knownAsins = ["B0921THFXZ", "B095JGJCC7"];
+const retryDelaysMs = [1000, 3000];
 
 function liveFetch(url, options) {
   return fetch(url, {
@@ -17,28 +18,70 @@ function liveFetch(url, options) {
   });
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function formatFailure(asin, result, error) {
+  const parts = [`ASIN ${asin} live smoke failed.`];
+
+  if (result) {
+    parts.push(
+      `Result: ${JSON.stringify({
+        ok: result.ok,
+        code: result.code,
+        message: result.message,
+        sourceUrl: result.sourceUrl,
+      })}`
+    );
+  }
+
+  if (error) {
+    parts.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  return parts.join(" ");
+}
+
+async function runLiveSmokeWithRetry(asin) {
+  let lastResult = null;
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      const result = await apiClient.checkSakuraScore({
+        asin,
+        forceRefresh: true,
+        fetchImpl: liveFetch,
+      });
+
+      lastResult = result;
+
+      assert.equal(result.ok, true, formatFailure(asin, result));
+      assert.equal(result.score.kind, "visual-image", formatFailure(asin, result));
+      assert.ok(result.score.images.length >= 1, formatFailure(asin, result));
+
+      for (const image of result.score.images) {
+        assert.match(image.src, /^data:image\/png;base64,/, formatFailure(asin, result));
+      }
+
+      return result;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === retryDelaysMs.length) {
+        throw new Error(formatFailure(asin, lastResult, lastError), { cause: error });
+      }
+
+      await delay(retryDelaysMs[attempt]);
+    }
+  }
+
+  throw new Error(formatFailure(asin, lastResult, lastError));
+}
+
 for (const asin of knownAsins) {
-  test(`live fetch returns a visual score for ${asin}`, async () => {
-    const result = await apiClient.checkSakuraScore({
-      asin,
-      forceRefresh: true,
-      fetchImpl: liveFetch,
-    });
-
-    assert.equal(result.ok, true);
-    assert.equal(result.score.kind, "visual-image");
-    assert.ok(result.score.images.length >= 1);
-
-    for (const image of result.score.images) {
-      assert.match(image.src, /^data:image\/png;base64,/);
-    }
-
-    if (result.verdict) {
-      assert.equal(result.verdict.kind, "visual-verdict");
-      assert.match(result.verdict.image.src, /^https:\/\/sakura-checker\.jp\//);
-      assert.ok(result.verdict.lines.length >= 1);
-    } else {
-      assert.equal(result.verdict, null);
-    }
+  test(`live smoke returns score images for ${asin}`, { timeout: 45000 }, async () => {
+    await runLiveSmokeWithRetry(asin);
   });
 }

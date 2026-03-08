@@ -50,7 +50,7 @@ jobs:
 
       - name: Run tests
         if: steps.version-check.outputs.version-changed == 'true'
-        run: npm test
+        run: npm run test:deploy
 
       - name: Create extension zip
         if: steps.version-check.outputs.version-changed == 'true'

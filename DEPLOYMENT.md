@@ -41,12 +41,20 @@ Add these repository secrets in GitHub: `Settings -> Secrets and variables -> Ac
 ## Release flow
 
 1. Update `package.json` to the release version.
-2. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
-3. Merge the version bump commit into `main`.
-4. The `Deploy to Chrome Web Store` workflow runs automatically.
-5. If `package.json` version changed in the latest commit, the workflow tests, packages, uploads, and submits the extension for public review.
+2. Run `npm run test:deploy` to execute deterministic tests and the live Sakura Checker smoke tests.
+3. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
+4. Merge the version bump commit into `main`.
+5. The `Deploy to Chrome Web Store` workflow runs automatically.
+6. If `package.json` version changed in the latest commit, the workflow tests, packages, uploads, and submits the extension for public review.
 
 Pushes to `main` without a `package.json` version change are skipped successfully.
+
+## Test commands
+
+- `npm test`: deterministic parser/API tests only
+- `npm run test:live`: live Sakura Checker smoke tests for a small fixed ASIN set
+- `npm run test:deploy`: deterministic tests plus the blocking live smoke tests used by GitHub Actions
+- `npm run test:browser-compare`: opt-in browser comparison for local investigation; not part of deployment gating
 
 ## Local packaging
 
