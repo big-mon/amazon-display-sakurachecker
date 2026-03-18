@@ -150,6 +150,7 @@ test("fetchRenderedScore closes the temporary tab after a render timeout", async
     assert.equal(result.ok, false);
     assert.equal(result.code, "parse_error");
     assert.equal(stub.removeCalls.length, 1);
+    assert.ok(stub.executeCalls > 1);
   } finally {
     stub.cleanup();
   }

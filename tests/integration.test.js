@@ -6,8 +6,11 @@ const renderedParser = require("../background/rendered-score-parser.js");
 
 const knownAsins = ["B0921THFXZ", "B095JGJCC7"];
 const retryDelaysMs = [1000, 3000];
-const liveSmokeTestTimeoutMs = 60000;
 const renderTimeoutMs = 30000;
+const liveSmokeTestTimeoutMs =
+  (retryDelaysMs.length + 1) * (renderTimeoutMs * 2) +
+  retryDelaysMs.reduce((total, delayMs) => total + delayMs, 0) +
+  10000;
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));

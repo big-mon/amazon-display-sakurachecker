@@ -130,19 +130,14 @@
       );
     }
 
-    function collectCandidateAnchors(itemInfo) {
-      const anchors = Array.from(itemInfo.querySelectorAll("a[href]"));
-      const reviewWrap = itemInfo.closest(".item-review-wrap");
-      if (!reviewWrap) {
-        return anchors;
+    function anchorContainsAnyAsin(anchor) {
+      if (!anchor) {
+        return false;
       }
 
-      const itemInfosInWrap = reviewWrap.querySelectorAll(".item-info");
-      if (itemInfosInWrap.length <= 1) {
-        anchors.push(...Array.from(reviewWrap.querySelectorAll("a[href]")));
-      }
-
-      return anchors;
+      return /(?:\/dp\/|\/gp\/product\/|\/search\/)[A-Z0-9]{10}/i.test(
+        String(anchor.getAttribute("href") || anchor.href || "")
+      );
     }
 
     function matchesRequestedAsin(itemInfo) {
@@ -150,7 +145,20 @@
         return true;
       }
 
-      return collectCandidateAnchors(itemInfo).some(anchorMatchesRequestedAsin);
+      const ownAnchors = Array.from(itemInfo.querySelectorAll("a[href]"));
+      if (ownAnchors.some(anchorMatchesRequestedAsin)) {
+        return true;
+      }
+      if (ownAnchors.some(anchorContainsAnyAsin)) {
+        return false;
+      }
+
+      const reviewWrap = itemInfo.closest(".item-review-wrap");
+      if (!reviewWrap) {
+        return false;
+      }
+
+      return Array.from(reviewWrap.querySelectorAll("a[href]")).some(anchorMatchesRequestedAsin);
     }
 
     function hasPendingRequestedLegacyCard() {

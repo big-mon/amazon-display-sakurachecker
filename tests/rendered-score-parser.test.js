@@ -80,7 +80,7 @@ test("extractRenderedScore waits when only unrelated legacy cards are rendered f
 });
 
 test("extractRenderedScore falls back to the rendered modern summary when needed", () => {
-  const document = parseDocument(fixtures.renderedModernHtml);
+  const document = parseDocument(fixtures.fixedRenderedModernHtml);
   const result = renderedParser.extractRenderedScore(document);
 
   assert.equal(result.ok, true);
@@ -92,7 +92,7 @@ test("extractRenderedScore falls back to the rendered modern summary when needed
 
 test("extractRenderedScore can use the modern summary even when unrelated legacy cards exist", () => {
   const document = parseDocument(
-    fixtures.renderedModernWithUnrelatedLegacyHtml,
+    fixtures.fixedRenderedModernWithUnrelatedLegacyHtml,
     "https://sakura-checker.jp/search/B0MODERN42/"
   );
   const result = renderedParser.extractRenderedScore(document, "B0MODERN42");

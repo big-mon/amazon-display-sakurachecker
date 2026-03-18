@@ -318,7 +318,9 @@ test("SakuraChecker refresh shows loading first and then renders fetched score i
       ],
     },
     verdict: {
+      kind: "visual-verdict",
       image: { src: "https://sakura-checker.jp/images/rv_level03.png", alt: "判定" },
+      lines: ["Amazonより", "危険なスコア"],
     },
   });
 

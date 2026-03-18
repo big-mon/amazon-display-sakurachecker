@@ -5,9 +5,43 @@ const os = require("node:os");
 const path = require("node:path");
 const { chromium } = require("playwright");
 
-const DEFAULT_ASIN = process.env.SAKURA_E2E_ASIN || "B095JGJCC7";
-const DEFAULT_URL =
-  process.env.SAKURA_E2E_URL || `https://www.amazon.co.jp/dp/${DEFAULT_ASIN}`;
+function extractAsinFromUrl(urlValue) {
+  if (!urlValue) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(urlValue);
+    const match = parsed.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
+    return match ? match[1].toUpperCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveAsin() {
+  const explicitAsin = process.env.SAKURA_E2E_ASIN;
+  const overriddenUrl = process.env.SAKURA_E2E_URL;
+
+  if (overriddenUrl) {
+    const extractedAsin = extractAsinFromUrl(overriddenUrl);
+    if (extractedAsin) {
+      return extractedAsin;
+    }
+    if (explicitAsin) {
+      return explicitAsin;
+    }
+
+    throw new Error(
+      "Could not extract an ASIN from SAKURA_E2E_URL. Set SAKURA_E2E_ASIN explicitly."
+    );
+  }
+
+  return explicitAsin || "B095JGJCC7";
+}
+
+const DEFAULT_ASIN = resolveAsin();
+const DEFAULT_URL = process.env.SAKURA_E2E_URL || `https://www.amazon.co.jp/dp/${DEFAULT_ASIN}`;
 const OUTPUT_DIR = path.join(process.cwd(), "output", "playwright");
 const FAILURE_SCREENSHOT_PATH = path.join(OUTPUT_DIR, "extension-e2e-failure.png");
 const SUCCESS_SCREENSHOT_PATH = path.join(OUTPUT_DIR, `extension-e2e-${DEFAULT_ASIN}.png`);
@@ -29,8 +63,10 @@ async function waitForExtensionServiceWorker(context) {
 
   return context.waitForEvent(
     "serviceworker",
-    (worker) => worker.url().startsWith("chrome-extension://"),
-    { timeout: 15000 }
+    {
+      predicate: (worker) => worker.url().startsWith("chrome-extension://"),
+      timeout: 15000,
+    }
   );
 }
 
@@ -119,6 +155,7 @@ async function run() {
       throw new Error(`Unexpected score suffix: ${panel.scoreSuffix || "<missing>"}`);
     }
 
+    await page.screenshot({ path: SUCCESS_SCREENSHOT_PATH, fullPage: true });
     console.log(
       JSON.stringify(
         {
@@ -132,7 +169,6 @@ async function run() {
         2
       )
     );
-    await page.screenshot({ path: SUCCESS_SCREENSHOT_PATH, fullPage: true });
   } catch (error) {
     if (context) {
       const page = context.pages()[0];

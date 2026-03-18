@@ -13,6 +13,11 @@
   const RenderedScoreClient = workerClient || nodeClient;
   const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
   const CACHE_PREFIX = "score:";
+  const MIN_REQUEST_INTERVAL_MS = 2000;
+  const MAX_REQUEST_JITTER_MS = 250;
+  const inFlightRequests = new Map();
+  let nextAllowedRequestAt = 0;
+  let rateLimitChain = Promise.resolve();
 
   function buildSourceUrl(asin) {
     return `https://sakura-checker.jp/search/${asin}/`;
@@ -107,10 +112,44 @@
     await storageSet(cacheKey, payload);
   }
 
+  function defaultWait(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
+
+  async function waitForRateLimit({
+    waitImpl = defaultWait,
+    nowImpl = Date.now,
+    randomImpl = Math.random,
+  } = {}) {
+    const reservation = rateLimitChain.then(async () => {
+      const now = nowImpl();
+      const waitMs = Math.max(0, nextAllowedRequestAt - now);
+      if (waitMs > 0) {
+        await waitImpl(waitMs);
+      }
+
+      const randomValue = Math.min(1, Math.max(0, Number(randomImpl()) || 0));
+      const jitterMs = Math.floor(randomValue * MAX_REQUEST_JITTER_MS);
+      nextAllowedRequestAt = nowImpl() + MIN_REQUEST_INTERVAL_MS + jitterMs;
+    });
+
+    rateLimitChain = reservation.catch(() => {});
+    return reservation;
+  }
+
+  function resetForTests() {
+    inFlightRequests.clear();
+    nextAllowedRequestAt = 0;
+    rateLimitChain = Promise.resolve();
+  }
+
   async function checkSakuraScore({
     asin,
     forceRefresh = false,
     fetchRenderedScoreImpl,
+    nowImpl,
+    randomImpl,
+    waitImpl,
   }) {
     const sourceUrl = buildSourceUrl(asin);
 
@@ -134,45 +173,66 @@
         ? fetchRenderedScoreImpl
         : RenderedScoreClient.fetchRenderedScore;
 
-    let renderedResult = null;
-    try {
-      renderedResult = await fetchRenderedScore({
-        asin,
-        sourceUrl,
+    if (inFlightRequests.has(asin)) {
+      return inFlightRequests.get(asin);
+    }
+
+    const requestPromise = (async () => {
+      let renderedResult = null;
+
+      await waitForRateLimit({
+        waitImpl,
+        nowImpl,
+        randomImpl,
       });
-    } catch (error) {
-      return createFailure(
-        "network_error",
-        error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
-        sourceUrl
-      );
-    }
 
-    if (!renderedResult || !renderedResult.ok) {
-      return createFailure(
-        renderedResult && renderedResult.code ? renderedResult.code : "parse_error",
-        renderedResult && renderedResult.message
-          ? renderedResult.message
-          : "Could not extract a rendered Sakura Checker score.",
-        sourceUrl
-      );
-    }
+      try {
+        renderedResult = await fetchRenderedScore({
+          asin,
+          sourceUrl,
+        });
+      } catch (error) {
+        return createFailure(
+          "network_error",
+          error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
+          sourceUrl
+        );
+      }
 
-    const payload = {
-      ok: true,
-      cached: false,
-      fetchedAt: new Date().toISOString(),
-      sourceUrl,
-      score: renderedResult.score,
-      verdict: normalizeVerdict(renderedResult.verdict),
-    };
+      if (!renderedResult || !renderedResult.ok) {
+        return createFailure(
+          renderedResult && renderedResult.code ? renderedResult.code : "parse_error",
+          renderedResult && renderedResult.message
+            ? renderedResult.message
+            : "Could not extract a rendered Sakura Checker score.",
+          sourceUrl
+        );
+      }
 
-    await writeCache(asin, payload);
+      const payload = {
+        ok: true,
+        cached: false,
+        fetchedAt: new Date().toISOString(),
+        sourceUrl,
+        score: renderedResult.score,
+        verdict: normalizeVerdict(renderedResult.verdict),
+      };
 
-    return payload;
+      await writeCache(asin, payload);
+
+      return payload;
+    })().finally(() => {
+      if (inFlightRequests.get(asin) === requestPromise) {
+        inFlightRequests.delete(asin);
+      }
+    });
+
+    inFlightRequests.set(asin, requestPromise);
+    return requestPromise;
   }
 
   return {
+    __resetForTests: resetForTests,
     buildSourceUrl,
     checkSakuraScore,
     createFailure,

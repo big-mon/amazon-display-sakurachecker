@@ -370,6 +370,24 @@ const modernSakuraRatingPayload = Buffer.from(
   "utf8"
 ).toString("base64");
 
+const fixedRenderedModernWithUnrelatedLegacyHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0OTHER999/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${targetedSecondaryItemInfo}
+      </div>
+      <div class="sakuraBlock">
+        ${modernSakuraAlertMarkup}
+        ${modernSakuraRatingMarkup}
+      </div>
+    </body>
+  </html>
+`;
+
 const modernInjectedHtml = `
   <!DOCTYPE html>
   <html lang="ja">
@@ -390,6 +408,18 @@ const modernInjectedHtml = `
             });
           </script>
         </div>
+      </div>
+    </body>
+  </html>
+`;
+
+const fixedRenderedModernHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="sakuraBlock">
+        ${modernSakuraAlertMarkup}
+        ${modernSakuraRatingMarkup}
       </div>
     </body>
   </html>
@@ -473,6 +503,8 @@ module.exports = {
   multiRatingNoVerdictWrap,
   otherReviewWrap,
   productAndModernHtml,
+  fixedRenderedModernHtml,
+  fixedRenderedModernWithUnrelatedLegacyHtml,
   realisticPageHtml,
   renderedLoadingHtml,
   renderedBlockedHtml,

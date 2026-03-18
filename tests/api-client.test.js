@@ -34,6 +34,7 @@ function installChromeStorageStub() {
 }
 
 test("buildSourceUrl creates the Sakura Checker search URL", () => {
+  apiClient.__resetForTests();
   assert.equal(
     apiClient.buildSourceUrl("B08N5WRWNW"),
     "https://sakura-checker.jp/search/B08N5WRWNW/"
@@ -41,6 +42,7 @@ test("buildSourceUrl creates the Sakura Checker search URL", () => {
 });
 
 test("checkSakuraScore caches successful rendered responses", async () => {
+  apiClient.__resetForTests();
   const cleanup = installChromeStorageStub();
   let fetchRenderedScoreCalls = 0;
 
@@ -69,11 +71,15 @@ test("checkSakuraScore caches successful rendered responses", async () => {
       asin: "B08N5WRWNW",
       forceRefresh: false,
       fetchRenderedScoreImpl,
+      waitImpl: async () => {},
+      randomImpl: () => 0,
     });
     const second = await apiClient.checkSakuraScore({
       asin: "B08N5WRWNW",
       forceRefresh: false,
       fetchRenderedScoreImpl,
+      waitImpl: async () => {},
+      randomImpl: () => 0,
     });
 
     assert.equal(first.ok, true);
@@ -88,6 +94,7 @@ test("checkSakuraScore caches successful rendered responses", async () => {
     });
     assert.equal(second.ok, true);
     assert.equal(second.cached, true);
+    assert.deepEqual(second.score, first.score);
     assert.deepEqual(second.verdict, first.verdict);
     assert.equal(fetchRenderedScoreCalls, 1);
   } finally {
@@ -96,6 +103,7 @@ test("checkSakuraScore caches successful rendered responses", async () => {
 });
 
 test("checkSakuraScore returns blocked when rendered extraction is blocked", async () => {
+  apiClient.__resetForTests();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
@@ -104,6 +112,8 @@ test("checkSakuraScore returns blocked when rendered extraction is blocked", asy
       code: "blocked",
       message: "Sakura Checker temporarily blocked the request.",
     }),
+    waitImpl: async () => {},
+    randomImpl: () => 0,
   });
 
   assert.equal(result.ok, false);
@@ -111,6 +121,7 @@ test("checkSakuraScore returns blocked when rendered extraction is blocked", asy
 });
 
 test("checkSakuraScore returns not_found when the product is missing", async () => {
+  apiClient.__resetForTests();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
@@ -119,8 +130,91 @@ test("checkSakuraScore returns not_found when the product is missing", async () 
       code: "not_found",
       message: "The product was not found on Sakura Checker.",
     }),
+    waitImpl: async () => {},
+    randomImpl: () => 0,
   });
 
   assert.equal(result.ok, false);
   assert.equal(result.code, "not_found");
+});
+
+test("checkSakuraScore deduplicates concurrent requests for the same ASIN", async () => {
+  apiClient.__resetForTests();
+  let fetchRenderedScoreCalls = 0;
+  let resolveRequest = null;
+
+  const fetchRenderedScoreImpl = async () => {
+    fetchRenderedScoreCalls += 1;
+    return new Promise((resolve) => {
+      resolveRequest = resolve;
+    });
+  };
+
+  const firstPromise = apiClient.checkSakuraScore({
+    asin: "B08N5WRWNW",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+  const secondPromise = apiClient.checkSakuraScore({
+    asin: "B08N5WRWNW",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fetchRenderedScoreCalls, 1);
+
+  resolveRequest({
+    ok: true,
+    score: {
+      kind: "visual-image",
+      images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+      suffix: "/5",
+    },
+    verdict: null,
+  });
+
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+  assert.deepEqual(second.score, first.score);
+});
+
+test("checkSakuraScore applies a global request interval between ASINs", async () => {
+  apiClient.__resetForTests();
+  const waits = [];
+
+  const fetchRenderedScoreImpl = async () => ({
+    ok: true,
+    score: {
+      kind: "visual-image",
+      images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+      suffix: "/5",
+    },
+    verdict: null,
+  });
+
+  await apiClient.checkSakuraScore({
+    asin: "B08N5WRWNW",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async (milliseconds) => {
+      waits.push(milliseconds);
+    },
+    randomImpl: () => 0,
+  });
+  await apiClient.checkSakuraScore({
+    asin: "B08SECOND00",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async (milliseconds) => {
+      waits.push(milliseconds);
+    },
+    randomImpl: () => 0,
+  });
+
+  assert.ok(waits.length >= 1);
+  assert.ok(waits[0] >= 1900);
 });

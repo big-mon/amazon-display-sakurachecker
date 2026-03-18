@@ -196,6 +196,38 @@ async function evaluateValue(cdpClient, expression) {
   return result.result.value;
 }
 
+async function waitForSakuraPageReady(cdpClient, asin) {
+  const expectedPath = `/search/${asin}/`;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < WAIT_TIMEOUT_MS) {
+    const state = await evaluateValue(
+      cdpClient,
+      `(() => ({
+        href: location.href,
+        readyState: document.readyState,
+        hasKnownRoot: Boolean(
+          document.querySelector("#pagetop, .item-review-wrap, .sakuraBlock, .loader, .loading")
+        ),
+      }))()`
+    );
+
+    if (
+      state &&
+      typeof state.href === "string" &&
+      state.href.includes(expectedPath) &&
+      state.readyState !== "loading" &&
+      state.hasKnownRoot
+    ) {
+      return;
+    }
+
+    await delay(250);
+  }
+
+  throw new Error("Timed out waiting for the Sakura Checker page to become ready.");
+}
+
 async function waitForRenderedPrimaryScore(cdpClient, extractSource, asin) {
   const expression = `(${extractSource})(document, ${JSON.stringify(asin)})`;
   const startedAt = Date.now();
@@ -205,6 +237,11 @@ async function waitForRenderedPrimaryScore(cdpClient, extractSource, asin) {
     if (result && result.ok) {
       return result;
     }
+    if (result && result.retryable === false) {
+      throw new Error(
+        `Rendered score extraction failed: ${result.code || "parse_error"} ${result.message || ""}`.trim()
+      );
+    }
 
     await delay(250);
   }
@@ -212,9 +249,10 @@ async function waitForRenderedPrimaryScore(cdpClient, extractSource, asin) {
   throw new Error("Timed out waiting for the rendered top score.");
 }
 
-async function compareRenderedScorePixels(cdpClient, parsedImages) {
+async function compareRenderedScorePixels(cdpClient, parsedScore) {
   const expression = `(() => {
-    const parsedSources = ${JSON.stringify(parsedImages.map((image) => image.src))};
+    const parsedSources = ${JSON.stringify(parsedScore.images.map((image) => image.src))};
+    const parsedSuffix = ${JSON.stringify(parsedScore.suffix)};
 
     async function renderSourcesToDataUrl(sources) {
       const loadedImages = await Promise.all(
@@ -294,7 +332,7 @@ async function compareRenderedScorePixels(cdpClient, parsedImages) {
             .filter((image) => !modernPercentRoot || !modernPercentRoot.contains(image))
             .map((image) => image.getAttribute("src") || image.src)
         : [];
-      if (modernSources.length) {
+      if (parsedSuffix === "%" && modernSources.length) {
         return {
           displayedCount: modernSources.length,
           parsedCount: parsedSources.length,
@@ -347,13 +385,14 @@ test("browser-rendered top score visually matches the rendered DOM extractor out
     await session.cdpClient.send("Page.enable");
     await session.cdpClient.send("Runtime.enable");
     await session.cdpClient.send("Page.navigate", { url });
+    await waitForSakuraPageReady(session.cdpClient, asin);
 
     const parsed = await waitForRenderedPrimaryScore(session.cdpClient, extractSource, asin);
 
     assert.equal(parsed.ok, true);
     assert.ok(parsed.score.images.length >= 1);
 
-    const comparison = await compareRenderedScorePixels(session.cdpClient, parsed.score.images);
+      const comparison = await compareRenderedScorePixels(session.cdpClient, parsed.score);
 
     assert.ok(comparison, "Could not compare the rendered score images.");
     assert.equal(comparison.parsedCount, parsed.score.images.length);
