@@ -56,6 +56,20 @@ test("extractRenderedScore filters legacy cards by the requested ASIN", () => {
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level03.png");
 });
 
+test("extractRenderedScore does not treat sibling cards as ASIN matches via the wrapper link", () => {
+  const document = parseDocument(fixtures.wrapperScopedLegacyHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.suffix, "/5");
+  assert.deepEqual(
+    result.score.images.map((image) => image.alt),
+    ["target-only"]
+  );
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level03.png");
+});
+
 test("extractRenderedScore waits when only unrelated legacy cards are rendered for the requested ASIN", () => {
   const document = parseDocument(fixtures.targetedRenderedLoadingHtml);
   const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
@@ -68,6 +82,20 @@ test("extractRenderedScore waits when only unrelated legacy cards are rendered f
 test("extractRenderedScore falls back to the rendered modern summary when needed", () => {
   const document = parseDocument(fixtures.renderedModernHtml);
   const result = renderedParser.extractRenderedScore(document);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.suffix, "%");
+  assert.equal(result.score.images.length, 1);
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/sakura_lv00.png");
+});
+
+test("extractRenderedScore can use the modern summary even when unrelated legacy cards exist", () => {
+  const document = parseDocument(
+    fixtures.renderedModernWithUnrelatedLegacyHtml,
+    "https://sakura-checker.jp/search/B0MODERN42/"
+  );
+  const result = renderedParser.extractRenderedScore(document, "B0MODERN42");
 
   assert.equal(result.ok, true);
   assert.equal(result.score.suffix, "%");

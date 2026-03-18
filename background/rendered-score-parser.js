@@ -107,14 +107,42 @@
         .filter(Boolean);
     }
 
-    function collectCandidateNodes(itemInfo) {
-      const candidateNodes = [itemInfo];
-      const reviewWrap = itemInfo.closest(".item-review-wrap");
-      if (reviewWrap) {
-        candidateNodes.push(reviewWrap);
+    function buildRequestedAsinPattern() {
+      if (!requestedAsin) {
+        return null;
       }
 
-      return candidateNodes;
+      return new RegExp(
+        `(?:/dp/|/gp/product/|/search/|\\b)${requestedAsin}(?:[/?#&]|$)`,
+        "i"
+      );
+    }
+
+    const requestedAsinPattern = buildRequestedAsinPattern();
+
+    function anchorMatchesRequestedAsin(anchor) {
+      if (!requestedAsinPattern || !anchor) {
+        return false;
+      }
+
+      return requestedAsinPattern.test(
+        String(anchor.getAttribute("href") || anchor.href || "")
+      );
+    }
+
+    function collectCandidateAnchors(itemInfo) {
+      const anchors = Array.from(itemInfo.querySelectorAll("a[href]"));
+      const reviewWrap = itemInfo.closest(".item-review-wrap");
+      if (!reviewWrap) {
+        return anchors;
+      }
+
+      const itemInfosInWrap = reviewWrap.querySelectorAll(".item-info");
+      if (itemInfosInWrap.length <= 1) {
+        anchors.push(...Array.from(reviewWrap.querySelectorAll("a[href]")));
+      }
+
+      return anchors;
     }
 
     function matchesRequestedAsin(itemInfo) {
@@ -122,16 +150,23 @@
         return true;
       }
 
-      const asinPattern = new RegExp(
-        `(?:/dp/|/gp/product/|/search/|\\b)${requestedAsin}(?:[/?#&]|$)`,
-        "i"
-      );
+      return collectCandidateAnchors(itemInfo).some(anchorMatchesRequestedAsin);
+    }
 
-      return collectCandidateNodes(itemInfo).some((candidateNode) =>
-        Array.from(candidateNode.querySelectorAll("a[href]")).some((anchor) =>
-          asinPattern.test(String(anchor.getAttribute("href") || anchor.href || ""))
-        )
-      );
+    function hasPendingRequestedLegacyCard() {
+      if (!requestedAsinPattern) {
+        return false;
+      }
+
+      return Array.from(root.querySelectorAll(".item-review-wrap")).some((reviewWrap) => {
+        const anchors = Array.from(reviewWrap.querySelectorAll("a[href]"));
+        if (!anchors.some(anchorMatchesRequestedAsin)) {
+          return false;
+        }
+
+        return Boolean(reviewWrap.querySelector(".loader, .loading")) ||
+          !reviewWrap.querySelector(".item-info");
+      });
     }
 
     function getLegacyCandidateData(itemInfo) {
@@ -211,7 +246,7 @@
         }, null);
 
       if (!bestCandidate) {
-        if (requestedAsin && candidates.length && !matchingCandidates.length) {
+        if (requestedAsin && candidates.length && !matchingCandidates.length && hasPendingRequestedLegacyCard()) {
           return {
             ok: false,
             code: "not_ready",

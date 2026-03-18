@@ -287,6 +287,70 @@ const targetedRenderedLoadingHtml = `
   </html>
 `;
 
+const wrapperScopedOtherItemInfo = `
+  <div class="item-info wrapper-scoped-other">
+    <div class="item-review-box">
+      <div class="item-review-after">
+        <p class="item-rating"><span>${sampleImageTag}${otherImageTag}${sampleImageTag.replace('alt="score"', 'alt="other-bonus"')}</span>/5</p>
+      </div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv01"><img src="/images/rv_level01.png" alt="other verdict"></p>
+        <p class="item-rv-score">莉門膚蜩・ｽ懷・繧ｹ繧ｳ繧｢</p>
+        <a href="https://www.amazon.co.jp/dp/B0OTHER999/?tag=sakurachecker-22" class="button button-blue button-mini" target="_blank" rel="nofollow">莉門膚蜩・/a>
+      </div>
+    </div>
+  </div>
+`;
+
+const wrapperScopedTargetItemInfo = `
+  <div class="item-info wrapper-scoped-target">
+    <div class="item-review-box">
+      <div class="item-review-after">
+        <p class="item-rating"><span>${sampleImageTag.replace('alt="score"', 'alt="target-only"')}</span>/5</p>
+      </div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv03"><img src="/images/rv_level03.png" alt="target verdict"></p>
+        <p class="item-rv-score">蟇ｾ雎｡蝠・刀縺ｮ繧ｹ繧ｳ繧｢</p>
+        <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" class="button button-blue button-mini" target="_blank" rel="nofollow">蟇ｾ雎｡蝠・/a>
+      </div>
+    </div>
+  </div>
+`;
+
+const wrapperScopedLegacyHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${wrapperScopedOtherItemInfo}
+        ${wrapperScopedTargetItemInfo}
+      </div>
+    </body>
+  </html>
+`;
+
+const renderedModernWithUnrelatedLegacyHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0OTHER999/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${targetedSecondaryItemInfo}
+      </div>
+      <div class="sakuraBlock">
+        <p class="sakura-alert">郢ｧ・ｵ郢ｧ・ｯ郢晢ｽｩ陟趣ｽｦ邵ｺ・ｯ<span class="sakura-num">${sampleImageTag}<span class="sakura-num-per">${otherImageTag}</span></span>邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/p>
+        <span class="sakura-msg is-size-6">陞ｳ迚吶・邵ｺ・ｪ陜繝ｻ蛻邵ｺ・ｧ邵ｺ蜻ｻ・ｼ繝ｻ/span>
+        <p class="image sakura-rating"><img src="/images/sakura_lv00.png" alt="陞ｳ迚吶・"></p>
+      </div>
+    </body>
+  </html>
+`;
+
 const modernSakuraAlertMarkup = `
   <p class="sakura-alert">サクラ度は<span class="sakura-num">${sampleImageTag}<span class="sakura-num-per">${otherImageTag}</span></span>です。</p>
   <span class="sakura-msg is-size-6">安全な商品です！</span>
@@ -412,6 +476,7 @@ module.exports = {
   realisticPageHtml,
   renderedLoadingHtml,
   renderedBlockedHtml,
+  renderedModernWithUnrelatedLegacyHtml,
   renderedModernHtml,
   sampleHtml,
   sampleImageTag,
@@ -420,4 +485,5 @@ module.exports = {
   targetedRenderedProductHtml,
   targetReviewWrap,
   verdictImageTag,
+  wrapperScopedLegacyHtml,
 };
