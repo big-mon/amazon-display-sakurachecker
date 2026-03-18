@@ -2,7 +2,6 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const apiClient = require("../background/api-client.js");
-const fixtures = require("./fixtures.js");
 
 function installChromeStorageStub() {
   const store = new Map();
@@ -35,35 +34,52 @@ function installChromeStorageStub() {
 }
 
 test("buildSourceUrl creates the Sakura Checker search URL", () => {
+  apiClient.__resetForTests();
   assert.equal(
     apiClient.buildSourceUrl("B08N5WRWNW"),
     "https://sakura-checker.jp/search/B08N5WRWNW/"
   );
 });
 
-test("checkSakuraScore caches successful responses", async () => {
+test("checkSakuraScore caches successful rendered responses", async () => {
+  apiClient.__resetForTests();
   const cleanup = installChromeStorageStub();
-  let fetchCalls = 0;
+  let fetchRenderedScoreCalls = 0;
 
   try {
-    const fetchImpl = async () => {
-      fetchCalls += 1;
+    const fetchRenderedScoreImpl = async () => {
+      fetchRenderedScoreCalls += 1;
       return {
         ok: true,
-        status: 200,
-        text: async () => fixtures.sampleHtml,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+          suffix: "/5",
+        },
+        verdict: {
+          kind: "visual-verdict",
+          image: {
+            src: "/images/rv_level03.png",
+            alt: "verdict",
+          },
+          lines: ["line 1", "line 2"],
+        },
       };
     };
 
     const first = await apiClient.checkSakuraScore({
       asin: "B08N5WRWNW",
       forceRefresh: false,
-      fetchImpl,
+      fetchRenderedScoreImpl,
+      waitImpl: async () => {},
+      randomImpl: () => 0,
     });
     const second = await apiClient.checkSakuraScore({
       asin: "B08N5WRWNW",
       forceRefresh: false,
-      fetchImpl,
+      fetchRenderedScoreImpl,
+      waitImpl: async () => {},
+      randomImpl: () => 0,
     });
 
     assert.equal(first.ok, true);
@@ -72,45 +88,133 @@ test("checkSakuraScore caches successful responses", async () => {
       kind: "visual-verdict",
       image: {
         src: "https://sakura-checker.jp/images/rv_level03.png",
-        alt: "判定",
+        alt: "verdict",
       },
-      lines: ["Amazonより", "かなり低いスコア"],
+      lines: ["line 1", "line 2"],
     });
     assert.equal(second.ok, true);
     assert.equal(second.cached, true);
+    assert.deepEqual(second.score, first.score);
     assert.deepEqual(second.verdict, first.verdict);
-    assert.equal(fetchCalls, 1);
+    assert.equal(fetchRenderedScoreCalls, 1);
   } finally {
     cleanup();
   }
 });
 
-test("checkSakuraScore returns blocked for rate limited responses", async () => {
+test("checkSakuraScore returns blocked when rendered extraction is blocked", async () => {
+  apiClient.__resetForTests();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
-    fetchImpl: async () => ({
+    fetchRenderedScoreImpl: async () => ({
       ok: false,
-      status: 429,
-      text: async () => "",
+      code: "blocked",
+      message: "Sakura Checker temporarily blocked the request.",
     }),
+    waitImpl: async () => {},
+    randomImpl: () => 0,
   });
 
   assert.equal(result.ok, false);
   assert.equal(result.code, "blocked");
 });
 
-test("checkSakuraScore returns not_found for missing products", async () => {
+test("checkSakuraScore returns not_found when the product is missing", async () => {
+  apiClient.__resetForTests();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
-    fetchImpl: async () => ({
+    fetchRenderedScoreImpl: async () => ({
       ok: false,
-      status: 404,
-      text: async () => "",
+      code: "not_found",
+      message: "The product was not found on Sakura Checker.",
     }),
+    waitImpl: async () => {},
+    randomImpl: () => 0,
   });
 
   assert.equal(result.ok, false);
   assert.equal(result.code, "not_found");
+});
+
+test("checkSakuraScore deduplicates concurrent requests for the same ASIN", async () => {
+  apiClient.__resetForTests();
+  let fetchRenderedScoreCalls = 0;
+  let resolveRequest = null;
+
+  const fetchRenderedScoreImpl = async () => {
+    fetchRenderedScoreCalls += 1;
+    return new Promise((resolve) => {
+      resolveRequest = resolve;
+    });
+  };
+
+  const firstPromise = apiClient.checkSakuraScore({
+    asin: "B08N5WRWNW",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+  const secondPromise = apiClient.checkSakuraScore({
+    asin: "B08N5WRWNW",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fetchRenderedScoreCalls, 1);
+
+  resolveRequest({
+    ok: true,
+    score: {
+      kind: "visual-image",
+      images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+      suffix: "/5",
+    },
+    verdict: null,
+  });
+
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+  assert.deepEqual(second.score, first.score);
+});
+
+test("checkSakuraScore applies a global request interval between ASINs", async () => {
+  apiClient.__resetForTests();
+  const waits = [];
+
+  const fetchRenderedScoreImpl = async () => ({
+    ok: true,
+    score: {
+      kind: "visual-image",
+      images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+      suffix: "/5",
+    },
+    verdict: null,
+  });
+
+  await apiClient.checkSakuraScore({
+    asin: "B08N5WRWNW",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async (milliseconds) => {
+      waits.push(milliseconds);
+    },
+    randomImpl: () => 0,
+  });
+  await apiClient.checkSakuraScore({
+    asin: "B08SECOND00",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async (milliseconds) => {
+      waits.push(milliseconds);
+    },
+    randomImpl: () => 0,
+  });
+
+  assert.ok(waits.length >= 1);
+  assert.ok(waits[0] >= 1900);
 });

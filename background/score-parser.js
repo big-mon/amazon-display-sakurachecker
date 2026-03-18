@@ -10,6 +10,7 @@
   const ITEM_RATING_MARKER = '<p class="item-rating">';
   const ITEM_REVIEW_LEVEL_MARKER = '<div class="item-review-level">';
   const ITEM_REVIEW_SCORE_MARKER = '<p class="item-rv-score">';
+  const ITEM_INFO_MARKER = '<div class="item-info';
 
   function getReviewWrapRanges(html) {
     const starts = [];
@@ -58,6 +59,166 @@
     }
 
     return block.slice(start, end + 4);
+  }
+
+  function findTagEnd(markup, start) {
+    let inQuote = null;
+
+    for (let index = start; index < markup.length; index += 1) {
+      const character = markup[index];
+      if ((character === '"' || character === "'") && inQuote === null) {
+        inQuote = character;
+        continue;
+      }
+      if (character === inQuote) {
+        inQuote = null;
+        continue;
+      }
+      if (character === ">" && inQuote === null) {
+        return index;
+      }
+    }
+
+    return -1;
+  }
+
+  function findClosingDivIndex(markup, start) {
+    let depth = 0;
+    let searchIndex = start;
+
+    while (searchIndex < markup.length) {
+      const nextOpen = markup.indexOf("<div", searchIndex);
+      const nextClose = markup.indexOf("</div", searchIndex);
+
+      if (nextOpen === -1 && nextClose === -1) {
+        break;
+      }
+
+      if (nextOpen !== -1 && (nextClose === -1 || nextOpen < nextClose)) {
+        const openEnd = findTagEnd(markup, nextOpen);
+        if (openEnd === -1) {
+          return -1;
+        }
+
+        depth += 1;
+        searchIndex = openEnd + 1;
+        continue;
+      }
+
+      const closeEnd = findTagEnd(markup, nextClose);
+      if (closeEnd === -1) {
+        return -1;
+      }
+
+      depth -= 1;
+      searchIndex = closeEnd + 1;
+      if (depth === 0) {
+        return closeEnd + 1;
+      }
+    }
+
+    return -1;
+  }
+
+  function extractItemInfoBlocks(block) {
+    const blocks = [];
+    let searchIndex = 0;
+
+    while (searchIndex < block.length) {
+      const start = block.indexOf(ITEM_INFO_MARKER, searchIndex);
+      if (start === -1) {
+        break;
+      }
+
+      const end = findClosingDivIndex(block, start);
+      if (end === -1) {
+        break;
+      }
+
+      blocks.push(block.slice(start, end));
+      searchIndex = end;
+    }
+
+    return blocks;
+  }
+
+  function scoreItemInfoBlock(block) {
+    const images = decodeScoreImagesFromMarkups(extractRatingMarkups(block));
+    let score = images.length;
+
+    if (block.includes(ITEM_REVIEW_LEVEL_MARKER)) {
+      score += 100;
+    }
+    if (block.includes("button-mini")) {
+      score += 50;
+    }
+    if (block.includes(ITEM_REVIEW_SCORE_MARKER)) {
+      score += 20;
+    }
+    if (block.includes('<p class="item-num">')) {
+      score += 10;
+    }
+
+    return score;
+  }
+
+  function findPrimaryItemInfoBlock(block) {
+    const itemInfoBlocks = extractItemInfoBlocks(block);
+    if (!itemInfoBlocks.length) {
+      return block;
+    }
+
+    return itemInfoBlocks.reduce((bestBlock, currentBlock) => {
+      if (!bestBlock) {
+        return currentBlock;
+      }
+
+      return scoreItemInfoBlock(currentBlock) > scoreItemInfoBlock(bestBlock)
+        ? currentBlock
+        : bestBlock;
+    }, null);
+  }
+
+  function decodeScoreImagesFromMarkups(ratingMarkups) {
+    const decodedGroups = ratingMarkups
+      .map((ratingMarkup) => decodeRatingImages(ratingMarkup))
+      .filter((images) => images.length);
+
+    if (!decodedGroups.length) {
+      return [];
+    }
+
+    const richestGroup = decodedGroups.reduce((best, current) =>
+      current.length > best.length ? current : best
+    );
+
+    if (richestGroup.length > 1) {
+      return richestGroup;
+    }
+
+    if (decodedGroups.length > 1) {
+      return decodedGroups.flat();
+    }
+
+    return richestGroup;
+  }
+
+  function decodeScoreImagesFromBlock(block) {
+    if (!block) {
+      return [];
+    }
+
+    const reviewLevelMarkerIndex = block.indexOf(ITEM_REVIEW_LEVEL_MARKER);
+    if (reviewLevelMarkerIndex !== -1) {
+      const ratingMarkup = findRatingMarkupBeforeMarker(block, ITEM_REVIEW_LEVEL_MARKER);
+      if (!ratingMarkup) {
+        return [];
+      }
+
+      return decodeRatingImages(ratingMarkup);
+    }
+
+    return decodeScoreImagesFromMarkups(extractRatingMarkups(block));
   }
 
   function findReviewLevelMarkup(block) {
@@ -329,6 +490,22 @@
     );
   }
 
+  function findPrimarySakuraAlertSnippet(html) {
+    const snippets = extractInjectedHtmlSnippets(html).filter((snippet) =>
+      snippet.includes('class="sakura-alert"')
+    );
+
+    return snippets[0] || null;
+  }
+
+  function findPrimarySakuraRatingSnippet(html) {
+    const snippets = extractInjectedHtmlSnippets(html).filter((snippet) =>
+      snippet.includes("sakura-rating")
+    );
+
+    return snippets[0] || null;
+  }
+
   function findRatingMarkupBeforeMarker(markup, marker) {
     const markerIndex = markup.indexOf(marker);
     const searchableMarkup = markerIndex === -1 ? markup : markup.slice(0, markerIndex);
@@ -339,6 +516,37 @@
 
   function decodeRatingImages(ratingMarkup) {
     return extractImageTags(ratingMarkup).map(decodeObfuscatedImageTag).filter(Boolean);
+  }
+
+  function decodeSakuraAlertScore(alertMarkup) {
+    if (!alertMarkup) {
+      return [];
+    }
+
+    const start = alertMarkup.indexOf('<span class="sakura-num">');
+    if (start === -1) {
+      return [];
+    }
+
+    const percentMarkerIndex = alertMarkup.indexOf('<span class="sakura-num-per">', start);
+    const searchableMarkup =
+      percentMarkerIndex === -1 ? alertMarkup.slice(start) : alertMarkup.slice(start, percentMarkerIndex);
+
+    return extractImageTags(searchableMarkup).map(decodeObfuscatedImageTag).filter(Boolean);
+  }
+
+  function decodeSakuraAlertMessage(alertMarkup) {
+    if (!alertMarkup) {
+      return [];
+    }
+
+    const match = alertMarkup.match(/<span class="sakura-msg[^"]*">([\s\S]*?)<\/span>/);
+    if (!match) {
+      return [];
+    }
+
+    const message = normalizeVerdictLine(match[1]);
+    return message ? [message] : [];
   }
 
   function decodeHtmlEntities(text) {
@@ -408,19 +616,56 @@
     };
   }
 
+  function parseModernInjectedScore(html) {
+    const alertSnippet = findPrimarySakuraAlertSnippet(html);
+    if (!alertSnippet) {
+      return null;
+    }
+
+    const images = decodeSakuraAlertScore(alertSnippet);
+    if (!images.length) {
+      return null;
+    }
+
+    const ratingSnippet = findPrimarySakuraRatingSnippet(html);
+    const ratingImage = ratingSnippet ? decodeVerdictImage(ratingSnippet) : null;
+    const verdictLines = decodeSakuraAlertMessage(alertSnippet);
+
+    return {
+      ok: true,
+      score: {
+        kind: "visual-image",
+        images,
+        suffix: "%",
+      },
+      verdict: ratingImage
+        ? {
+            kind: "visual-verdict",
+            image: ratingImage,
+            lines: verdictLines,
+          }
+        : null,
+    };
+  }
+
   function parseVisualScore(html, asin) {
-    let ratingMarkup = null;
+    let scoreImages = [];
     let reviewLevelMarkup = null;
 
     const injectedSnippet = findPrimaryInjectedSnippet(html);
     if (injectedSnippet) {
-      ratingMarkup = findRatingMarkupBeforeMarker(injectedSnippet, ITEM_REVIEW_LEVEL_MARKER);
+      scoreImages = decodeScoreImagesFromBlock(injectedSnippet);
       reviewLevelMarkup = findReviewLevelMarkup(injectedSnippet);
     }
 
-    if (!ratingMarkup) {
+    if (!scoreImages.length) {
       const productBlock = findPrimaryProductBlock(html, asin);
       if (!productBlock) {
+        const modernScore = parseModernInjectedScore(html);
+        if (modernScore) {
+          return modernScore;
+        }
+
         return {
           ok: false,
           code: "not_found",
@@ -428,9 +673,15 @@
         };
       }
 
-      ratingMarkup = findRatingMarkup(productBlock);
-      reviewLevelMarkup = findReviewLevelMarkup(productBlock);
-      if (!ratingMarkup) {
+      const primaryItemInfoBlock = findPrimaryItemInfoBlock(productBlock);
+      scoreImages = decodeScoreImagesFromBlock(primaryItemInfoBlock);
+      reviewLevelMarkup = findReviewLevelMarkup(primaryItemInfoBlock);
+      if (!scoreImages.length) {
+        const modernScore = parseModernInjectedScore(html);
+        if (modernScore) {
+          return modernScore;
+        }
+
         return {
           ok: false,
           code: "parse_error",
@@ -439,22 +690,13 @@
       }
     }
 
-    const images = decodeRatingImages(ratingMarkup);
     const verdict = reviewLevelMarkup ? decodeVerdict(reviewLevelMarkup) : null;
-
-    if (!images.length) {
-      return {
-        ok: false,
-        code: "parse_error",
-        message: "Could not decode the score images from the rating markup.",
-      };
-    }
 
     return {
       ok: true,
       score: {
         kind: "visual-image",
-        images,
+        images: scoreImages,
         suffix: "/5",
       },
       verdict,
@@ -467,7 +709,11 @@
     decodeVerdictLines,
     decodeRatingImages,
     decodeObfuscatedImageTag,
+    decodeSakuraAlertMessage,
+    decodeSakuraAlertScore,
     decodeUrlEncodedBase64Payload,
+    decodeScoreImagesFromBlock,
+    decodeScoreImagesFromMarkups,
     extractDecodedScriptBodies,
     extractInjectedHtmlSnippets,
     extractImageTags,
@@ -476,10 +722,14 @@
     extractScriptStringAssignments,
     findPrimaryProductBlock,
     findPrimaryInjectedSnippet,
+    findPrimaryItemInfoBlock,
+    findPrimarySakuraAlertSnippet,
+    findPrimarySakuraRatingSnippet,
     findRatingMarkup,
     findRatingMarkupBeforeMarker,
     findReviewLevelMarkup,
     parseAttributes,
+    parseModernInjectedScore,
     parseVisualScore,
     restoreObfuscatedValue,
   };

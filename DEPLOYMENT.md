@@ -56,7 +56,8 @@ Pushes to `main` without a `package.json` version change are skipped successfull
 ## Test commands
 
 - `npm test`: deterministic parser/API tests only
-- `npm run test:live`: live Sakura Checker smoke tests for a small fixed ASIN set
+- `npm run test:live`: live Sakura Checker smoke tests for a small fixed ASIN set via rendered DOM extraction
+- `npm run test:e2e-extension`: Playwright Chromium extension smoke test against a real Amazon product page
 - `npm run test:deploy`: deterministic tests plus the blocking live smoke tests used by GitHub Actions
 - `npm run test:browser-compare`: opt-in browser comparison for local investigation; not part of deployment gating
 

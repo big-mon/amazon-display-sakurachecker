@@ -53,6 +53,10 @@ jobs:
         if: steps.version-check.outputs.version-changed == 'true'
         run: npm ci
 
+      - name: Install Playwright Chromium
+        if: steps.version-check.outputs.version-changed == 'true'
+        run: npx playwright install --with-deps chromium
+
       - name: Run tests
         if: steps.version-check.outputs.version-changed == 'true'
         run: npm run test:deploy

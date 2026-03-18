@@ -48,6 +48,7 @@ Chrome Web Store での公開を前提に、機能だけでなく、権限・通
 ### 何を保存するか
 
 `chrome.storage.local` に、取得結果のキャッシュを保存します。
+取得時には、Sakura Checker の描画後 DOM を読むために `active: false` の一時タブを短時間だけ開いてすぐ閉じることがあります。
 
 - キー: `score:<ASIN>`
 - 保存内容: 取得時刻、Sakura Checker の参照 URL、評価画像情報、判定画像情報
@@ -82,6 +83,20 @@ Chrome Web Store での公開を前提に、機能だけでなく、権限・通
 用途:
 
 - Sakura Checker の取得結果を 12 時間キャッシュするため
+
+### `tabs`
+
+用途:
+
+- Sakura Checker の描画後 DOM を読むために、`active: false` の一時タブを短時間作成するため
+- 描画後のスコア取得が終わったら一時タブをすぐ閉じるため
+
+### `scripting`
+
+用途:
+
+- 一時タブ上の Sakura Checker ページへスクリプトを注入して実行するため
+- 描画後の DOM を読み取り、ブラウザ上で実際に表示されたスコアカードを取得するため
 
 ### `https://www.amazon.co.jp/*`
 
@@ -158,12 +173,15 @@ MIT
 
 Use the following commands depending on the level of validation you need:
 
-- `npm test`: deterministic parser and API tests only
-- `npm run test:live`: live Sakura Checker smoke tests against a small fixed ASIN set
-- `npm run test:deploy`: deployment gate that runs both deterministic tests and the live smoke tests
-- `npm run test:browser-compare`: opt-in browser comparison for local investigation only
+- `npm test`: stable deterministic tests for parser, API, and content-flow behavior
+- `npm run test:live`: rendered DOM smoke tests against the live Sakura Checker pages
+- `npm run test:e2e-extension`: Playwright Chromium E2E for the unpacked extension on a real Amazon page
+- `npm run test:deploy`: deployment-gate command that runs the deterministic suite plus the live smoke tests
+- `npm run test:browser-compare`: opt-in local investigation only; not part of the default pipeline
 
-`npm test` is intended to stay stable across repeated runs. The live smoke tests keep the external Sakura Checker integration covered without making pixel-perfect browser comparison a deployment requirement.
+`npm test` is intended to stay stable across repeated runs. `npm run test:live` and `npm run test:e2e-extension` cover external integration and browser behavior. `npm run test:deploy` is the deployment gate, while `npm run test:browser-compare` stays opt-in for local debugging.
+
+Before the first `npm run test:live` or `npm run test:e2e-extension`, install the Playwright browser once with `npx playwright install chromium`.
 
 ### Browser compare
 

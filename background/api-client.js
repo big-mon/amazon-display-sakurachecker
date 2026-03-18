@@ -1,17 +1,23 @@
 (function (root, factory) {
   const exportsObject = factory(
-    root.ScoreParser,
-    typeof module !== "undefined" && module.exports ? require("./score-parser.js") : null
+    root.RenderedScoreClient,
+    typeof module !== "undefined" && module.exports
+      ? require("./rendered-score-client.js")
+      : null
   );
   if (typeof module !== "undefined" && module.exports) {
     module.exports = exportsObject;
   }
   root.ApiClient = exportsObject;
-})(typeof self !== "undefined" ? self : globalThis, function (workerParser, nodeParser) {
-  const ScoreParser = workerParser || nodeParser;
+})(typeof self !== "undefined" ? self : globalThis, function (workerClient, nodeClient) {
+  const RenderedScoreClient = workerClient || nodeClient;
   const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-  const FETCH_TIMEOUT_MS = 15000;
   const CACHE_PREFIX = "score:";
+  const MIN_REQUEST_INTERVAL_MS = 2000;
+  const MAX_REQUEST_JITTER_MS = 250;
+  const inFlightRequests = new Map();
+  let nextAllowedRequestAt = 0;
+  let rateLimitChain = Promise.resolve();
 
   function buildSourceUrl(asin) {
     return `https://sakura-checker.jp/search/${asin}/`;
@@ -106,35 +112,51 @@
     await storageSet(cacheKey, payload);
   }
 
-  async function fetchSearchPage(asin, fetchImpl = fetch) {
-    const sourceUrl = buildSourceUrl(asin);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-    try {
-      const response = await fetchImpl(sourceUrl, {
-        method: "GET",
-        signal: controller.signal,
-        headers: {
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-        },
-        cache: "no-store",
-      });
-
-      return { response, sourceUrl };
-    } finally {
-      clearTimeout(timeoutId);
-    }
+  function defaultWait(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
 
-  async function checkSakuraScore({ asin, forceRefresh = false, fetchImpl = fetch }) {
+  async function waitForRateLimit({
+    waitImpl = defaultWait,
+    nowImpl = Date.now,
+    randomImpl = Math.random,
+  } = {}) {
+    const reservation = rateLimitChain.then(async () => {
+      const now = nowImpl();
+      const waitMs = Math.max(0, nextAllowedRequestAt - now);
+      if (waitMs > 0) {
+        await waitImpl(waitMs);
+      }
+
+      const randomValue = Math.min(1, Math.max(0, Number(randomImpl()) || 0));
+      const jitterMs = Math.floor(randomValue * MAX_REQUEST_JITTER_MS);
+      nextAllowedRequestAt = nowImpl() + MIN_REQUEST_INTERVAL_MS + jitterMs;
+    });
+
+    rateLimitChain = reservation.catch(() => {});
+    return reservation;
+  }
+
+  function resetForTests() {
+    inFlightRequests.clear();
+    nextAllowedRequestAt = 0;
+    rateLimitChain = Promise.resolve();
+  }
+
+  async function checkSakuraScore({
+    asin,
+    forceRefresh = false,
+    fetchRenderedScoreImpl,
+    nowImpl,
+    randomImpl,
+    waitImpl,
+  }) {
     const sourceUrl = buildSourceUrl(asin);
 
-    if (!ScoreParser) {
+    if (!RenderedScoreClient && typeof fetchRenderedScoreImpl !== "function") {
       return createFailure(
         "parse_error",
-        "The score parser is not available in the background context.",
+        "The rendered score client is not available in the background context.",
         sourceUrl
       );
     }
@@ -146,58 +168,74 @@
       }
     }
 
-    let responseData = null;
-    try {
-      responseData = await fetchSearchPage(asin, fetchImpl);
-    } catch (error) {
-      const message =
-        error && error.name === "AbortError"
-          ? "Timed out while fetching Sakura Checker."
-          : "Failed to fetch Sakura Checker.";
-      return createFailure("network_error", message, sourceUrl);
+    const fetchRenderedScore =
+      typeof fetchRenderedScoreImpl === "function"
+        ? fetchRenderedScoreImpl
+        : RenderedScoreClient.fetchRenderedScore;
+
+    if (inFlightRequests.has(asin)) {
+      return inFlightRequests.get(asin);
     }
 
-    const { response } = responseData;
+    const requestPromise = (async () => {
+      let renderedResult = null;
 
-    if (response.status === 404) {
-      return createFailure("not_found", "The product was not found on Sakura Checker.", sourceUrl);
-    }
-    if (response.status === 403 || response.status === 429) {
-      return createFailure("blocked", "Sakura Checker temporarily blocked the request.", sourceUrl);
-    }
-    if (!response.ok) {
-      return createFailure(
-        "network_error",
-        `Unexpected response from Sakura Checker: ${response.status}.`,
-        sourceUrl
-      );
-    }
+      await waitForRateLimit({
+        waitImpl,
+        nowImpl,
+        randomImpl,
+      });
 
-    const html = await response.text();
-    const parsed = ScoreParser.parseVisualScore(html, asin);
-    if (!parsed.ok) {
-      return createFailure(parsed.code, parsed.message, sourceUrl);
-    }
+      try {
+        renderedResult = await fetchRenderedScore({
+          asin,
+          sourceUrl,
+        });
+      } catch (error) {
+        return createFailure(
+          "network_error",
+          error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
+          sourceUrl
+        );
+      }
 
-    const payload = {
-      ok: true,
-      cached: false,
-      fetchedAt: new Date().toISOString(),
-      sourceUrl,
-      score: parsed.score,
-      verdict: normalizeVerdict(parsed.verdict),
-    };
+      if (!renderedResult || !renderedResult.ok) {
+        return createFailure(
+          renderedResult && renderedResult.code ? renderedResult.code : "parse_error",
+          renderedResult && renderedResult.message
+            ? renderedResult.message
+            : "Could not extract a rendered Sakura Checker score.",
+          sourceUrl
+        );
+      }
 
-    await writeCache(asin, payload);
+      const payload = {
+        ok: true,
+        cached: false,
+        fetchedAt: new Date().toISOString(),
+        sourceUrl,
+        score: renderedResult.score,
+        verdict: normalizeVerdict(renderedResult.verdict),
+      };
 
-    return payload;
+      await writeCache(asin, payload);
+
+      return payload;
+    })().finally(() => {
+      if (inFlightRequests.get(asin) === requestPromise) {
+        inFlightRequests.delete(asin);
+      }
+    });
+
+    inFlightRequests.set(asin, requestPromise);
+    return requestPromise;
   }
 
   return {
+    __resetForTests: resetForTests,
     buildSourceUrl,
     checkSakuraScore,
     createFailure,
-    fetchSearchPage,
     readCache,
     writeCache,
   };

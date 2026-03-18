@@ -49,6 +49,30 @@ test("parseVisualScore prefers the injected main score markup", () => {
   assert.equal(result.verdict.lines.length, 2);
 });
 
+test("parseVisualScore prefers the modern injected sakura score markup", () => {
+  const result = parser.parseVisualScore(fixtures.modernInjectedHtml, "B08N5WRWNW");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "visual-image");
+  assert.equal(result.score.images.length, 1);
+  assert.equal(result.score.suffix, "%");
+  assert.equal(result.score.images[0].alt, "score");
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.kind, "visual-verdict");
+  assert.equal(result.verdict.image.src, "/images/sakura_lv00.png");
+  assert.deepEqual(result.verdict.lines, ["安全な商品です！"]);
+});
+
+test("parseVisualScore prefers the product card over the modern sakura summary", () => {
+  const result = parser.parseVisualScore(fixtures.productAndModernHtml, "B08N5WRWNW");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.suffix, "/5");
+  assert.equal(result.score.images.length, 1);
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.image.src, "/images/rv_level03.png");
+});
+
 test("parseVisualScore returns not_found when no matching ASIN exists", () => {
   const result = parser.parseVisualScore(fixtures.sampleHtml, "B111111111");
 
@@ -108,4 +132,33 @@ test("parseVisualScore handles a realistic page shape with gp/product links", ()
   assert.equal(result.verdict.kind, "visual-verdict");
   assert.equal(result.verdict.image.src, "/images/rv_level03.png");
   assert.deepEqual(result.verdict.lines, ["Amazonより", "危険なスコア"]);
+});
+
+test("parseVisualScore combines repeated rating markups when no verdict block exists", () => {
+  const result = parser.parseVisualScore(fixtures.multiRatingNoVerdictHtml, "B0MULTI123");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "visual-image");
+  assert.equal(result.score.images.length, 3);
+  assert.deepEqual(
+    result.score.images.map((image) => image.alt),
+    ["digit-1", "digit-2", "digit-3"]
+  );
+  assert.equal(result.verdict, null);
+});
+
+test("parseVisualScore chooses the richest item-info card within a product block", () => {
+  const result = parser.parseVisualScore(fixtures.comparisonHeavyProductHtml, "B0COMPARE1");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "visual-image");
+  assert.equal(result.score.suffix, "/5");
+  assert.equal(result.score.images.length, 3);
+  assert.deepEqual(
+    result.score.images.map((image) => image.alt),
+    ["score", "other", "plus"]
+  );
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.image.src, "/images/rv_level01.png");
+  assert.deepEqual(result.verdict.lines, ["Amazonと", "同等のスコア"]);
 });
