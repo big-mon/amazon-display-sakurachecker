@@ -42,6 +42,29 @@ test("extractRenderedScore prefers the richest rendered product card", () => {
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level01.png");
 });
 
+test("extractRenderedScore filters legacy cards by the requested ASIN", () => {
+  const document = parseDocument(fixtures.targetedRenderedProductHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.suffix, "/5");
+  assert.deepEqual(
+    result.score.images.map((image) => image.alt),
+    ["target-digit"]
+  );
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level03.png");
+});
+
+test("extractRenderedScore waits when only unrelated legacy cards are rendered for the requested ASIN", () => {
+  const document = parseDocument(fixtures.targetedRenderedLoadingHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_ready");
+  assert.equal(result.retryable, true);
+});
+
 test("extractRenderedScore falls back to the rendered modern summary when needed", () => {
   const document = parseDocument(fixtures.renderedModernHtml);
   const result = renderedParser.extractRenderedScore(document);
@@ -51,6 +74,18 @@ test("extractRenderedScore falls back to the rendered modern summary when needed
   assert.equal(result.score.images.length, 1);
   assert.ok(result.verdict);
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/sakura_lv00.png");
+});
+
+test("extractRenderedScore reports blocked for rate-limit or captcha pages", () => {
+  const document = parseDocument(
+    fixtures.renderedBlockedHtml,
+    "https://sakura-checker.jp/error/accessdenied/"
+  );
+  const result = renderedParser.extractRenderedScore(document, "B08N5WRWNW");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "blocked");
+  assert.equal(result.retryable, false);
 });
 
 test("extractRenderedScore reports not_ready while the rendered card is still loading", () => {

@@ -102,7 +102,7 @@
     });
   }
 
-  function executeExtract(tabId) {
+  function executeExtract(tabId, asin) {
     return new Promise((resolve, reject) => {
       if (
         typeof chrome === "undefined" ||
@@ -125,6 +125,7 @@
         {
           target: { tabId },
           func: RenderedScoreParser.extractRenderedScore,
+          args: asin ? [asin] : [],
         },
         (injectionResults) => {
           if (
@@ -210,12 +211,13 @@
   async function pollExtractedScore(tabId, options = {}) {
     const timeoutMs = Number(options.timeoutMs || DEFAULT_TIMEOUT_MS);
     const pollIntervalMs = Number(options.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS);
+    const asin = options.asin || null;
     const startedAt = Date.now();
     let lastResult = null;
 
     while (Date.now() - startedAt < timeoutMs) {
       try {
-        const result = await executeExtract(tabId);
+        const result = await executeExtract(tabId, asin);
         if (result && result.ok) {
           return result;
         }
@@ -253,7 +255,7 @@
     };
   }
 
-  async function fetchRenderedScore({ sourceUrl, timeoutMs, pollIntervalMs }) {
+  async function fetchRenderedScore({ asin, sourceUrl, timeoutMs, pollIntervalMs }) {
     let tab = null;
 
     try {
@@ -264,6 +266,7 @@
 
       await waitForTabComplete(tab.id, timeoutMs);
       return await pollExtractedScore(tab.id, {
+        asin,
         timeoutMs,
         pollIntervalMs,
       });

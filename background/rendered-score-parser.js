@@ -5,10 +5,13 @@
   }
   root.RenderedScoreParser = exportsObject;
 })(typeof self !== "undefined" ? self : globalThis, function () {
-  function extractRenderedScore(rootNode) {
+  function extractRenderedScore(rootNodeOrAsin, maybeRequestedAsin) {
     const root =
-      rootNode ||
-      (typeof document !== "undefined" ? document : null);
+      rootNodeOrAsin && typeof rootNodeOrAsin.querySelector === "function"
+        ? rootNodeOrAsin
+        : (typeof document !== "undefined" ? document : null);
+    const requestedAsin =
+      root === rootNodeOrAsin ? maybeRequestedAsin : rootNodeOrAsin;
 
     if (!root || typeof root.querySelector !== "function") {
       return {
@@ -104,6 +107,33 @@
         .filter(Boolean);
     }
 
+    function collectCandidateNodes(itemInfo) {
+      const candidateNodes = [itemInfo];
+      const reviewWrap = itemInfo.closest(".item-review-wrap");
+      if (reviewWrap) {
+        candidateNodes.push(reviewWrap);
+      }
+
+      return candidateNodes;
+    }
+
+    function matchesRequestedAsin(itemInfo) {
+      if (!requestedAsin) {
+        return true;
+      }
+
+      const asinPattern = new RegExp(
+        `(?:/dp/|/gp/product/|/search/|\\b)${requestedAsin}(?:[/?#&]|$)`,
+        "i"
+      );
+
+      return collectCandidateNodes(itemInfo).some((candidateNode) =>
+        Array.from(candidateNode.querySelectorAll("a[href]")).some((anchor) =>
+          asinPattern.test(String(anchor.getAttribute("href") || anchor.href || ""))
+        )
+      );
+    }
+
     function getLegacyCandidateData(itemInfo) {
       const ratingNodes = itemInfo.querySelectorAll("p.item-rating");
       const images = getRatingImages(ratingNodes);
@@ -166,7 +196,10 @@
         return true;
       });
 
-      const bestCandidate = candidates
+      const matchingCandidates = candidates.filter(matchesRequestedAsin);
+      const scopedCandidates = requestedAsin ? matchingCandidates : candidates;
+
+      const bestCandidate = scopedCandidates
         .map(getLegacyCandidateData)
         .filter(Boolean)
         .reduce((best, candidate) => {
@@ -178,6 +211,15 @@
         }, null);
 
       if (!bestCandidate) {
+        if (requestedAsin && candidates.length && !matchingCandidates.length) {
+          return {
+            ok: false,
+            code: "not_ready",
+            message: "Rendered Sakura Checker product card is not available yet.",
+            retryable: true,
+          };
+        }
+
         return null;
       }
 
@@ -244,6 +286,65 @@
       return "";
     }
 
+    function currentTitle() {
+      try {
+        if (typeof root.title === "string" && root.title) {
+          return root.title;
+        }
+      } catch {
+        // Ignore title access issues and fall back.
+      }
+
+      if (typeof document !== "undefined" && typeof document.title === "string") {
+        return document.title;
+      }
+
+      return "";
+    }
+
+    function detectBlockedPage() {
+      const pathname = currentPathname();
+      if (/\/error\/(?:accessdenied|forbidden|blocked|captcha)\//i.test(pathname)) {
+        return {
+          ok: false,
+          code: "blocked",
+          message: "Sakura Checker temporarily blocked the request.",
+          retryable: false,
+        };
+      }
+
+      const title = normalizeText(currentTitle()).toLowerCase();
+      const bodyText = normalizeText((root.body && root.body.textContent) || root.textContent || "");
+      const bodyTextLower = bodyText.toLowerCase();
+      const blockedPatterns = [
+        /too many requests/i,
+        /access denied/i,
+        /forbidden/i,
+        /captcha/i,
+        /recaptcha/i,
+        /アクセスが集中/i,
+        /アクセス制限/i,
+        /しばらく待/i,
+        /botではないこと/i,
+      ];
+
+      if (blockedPatterns.some((pattern) => pattern.test(title) || pattern.test(bodyTextLower) || pattern.test(bodyText))) {
+        return {
+          ok: false,
+          code: "blocked",
+          message: "Sakura Checker temporarily blocked the request.",
+          retryable: false,
+        };
+      }
+
+      return null;
+    }
+
+    const blocked = detectBlockedPage();
+    if (blocked) {
+      return blocked;
+    }
+
     if (/\/error\/notfound\//.test(currentPathname())) {
       return {
         ok: false,
@@ -254,7 +355,10 @@
     }
 
     const legacy = extractLegacyScore();
-    if (legacy) {
+    if (legacy && legacy.ok) {
+      return legacy;
+    }
+    if (legacy && legacy.code === "not_ready") {
       return legacy;
     }
 

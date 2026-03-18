@@ -14,6 +14,7 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
   const removeCalls = [];
   let nextTabId = 1;
   let executeCalls = 0;
+  const executeDetails = [];
 
   global.chrome = {
     runtime: {
@@ -59,6 +60,7 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
     scripting: {
       executeScript(details, callback) {
         executeCalls += 1;
+        executeDetails.push(details);
         callback([
           {
             result: scriptResponder(details, executeCalls),
@@ -74,6 +76,7 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
     get executeCalls() {
       return executeCalls;
     },
+    executeDetails,
     cleanup() {
       delete global.chrome;
     },
@@ -106,6 +109,7 @@ test("fetchRenderedScore creates a temporary tab, polls, and closes it on succes
 
   try {
     const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B095JGJCC7",
       sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
       timeoutMs: 200,
       pollIntervalMs: 1,
@@ -117,6 +121,7 @@ test("fetchRenderedScore creates a temporary tab, polls, and closes it on succes
     assert.equal(stub.createCalls[0].active, false);
     assert.equal(stub.removeCalls.length, 1);
     assert.ok(stub.executeCalls >= 2);
+    assert.deepEqual(stub.executeDetails[0].args, ["B095JGJCC7"]);
   } finally {
     stub.cleanup();
   }
@@ -136,6 +141,7 @@ test("fetchRenderedScore closes the temporary tab after a render timeout", async
 
   try {
     const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B095JGJCC7",
       sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
       timeoutMs: 25,
       pollIntervalMs: 1,
@@ -163,6 +169,7 @@ test("fetchRenderedScore returns terminal extraction errors without retrying for
 
   try {
     const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B095JGJCC7",
       sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
       timeoutMs: 200,
       pollIntervalMs: 1,

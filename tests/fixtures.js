@@ -218,6 +218,75 @@ const comparisonHeavyProductHtml = `
   </html>
 `;
 
+const targetedSecondaryItemInfo = `
+  <div class="item-info targeted-secondary">
+    <div class="item-review-box">
+      <div class="item-review-after">
+        <p class="item-rating"><span>${sampleImageTag}${otherImageTag}${sampleImageTag.replace('alt="score"', 'alt="bonus-1"')}</span>/5</p>
+      </div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv01"><img src="/images/rv_level01.png" alt="verdict"></p>
+        <p class="item-rv-score">別商品の比較カード</p>
+        <a href="https://www.amazon.co.jp/dp/B0OTHER999/?tag=sakurachecker-22" class="button button-blue button-mini" target="_blank" rel="nofollow">他商品</a>
+      </div>
+    </div>
+  </div>
+`;
+
+const targetedPrimaryItemInfo = `
+  <div class="item-info targeted-primary">
+    <div class="item-review-box">
+      <div class="item-review-after">
+        <p class="item-rating"><span>${sampleImageTag.replace('alt="score"', 'alt="target-digit"')}</span>/5</p>
+      </div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv03"><img src="/images/rv_level03.png" alt="target verdict"></p>
+        <p class="item-rv-score">対象商品のスコア</p>
+      </div>
+    </div>
+  </div>
+`;
+
+const targetedRenderedProductHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0OTHER999/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${targetedSecondaryItemInfo}
+      </div>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${targetedPrimaryItemInfo}
+      </div>
+    </body>
+  </html>
+`;
+
+const targetedRenderedLoadingHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0OTHER999/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${targetedSecondaryItemInfo}
+      </div>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        <div id="target-loader" class="loader"></div>
+      </div>
+    </body>
+  </html>
+`;
+
 const modernSakuraAlertMarkup = `
   <p class="sakura-alert">サクラ度は<span class="sakura-num">${sampleImageTag}<span class="sakura-num-per">${otherImageTag}</span></span>です。</p>
   <span class="sakura-msg is-size-6">安全な商品です！</span>
@@ -286,6 +355,21 @@ const renderedLoadingHtml = `
   </html>
 `;
 
+const renderedBlockedHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <head>
+      <title>Too Many Requests</title>
+    </head>
+    <body>
+      <main>
+        <h1>アクセスが集中しています</h1>
+        <p>しばらく待ってから再度お試しください。</p>
+      </main>
+    </body>
+  </html>
+`;
+
 const productAndModernHtml = sampleHtml.replace(
   "</body>",
   `
@@ -327,10 +411,13 @@ module.exports = {
   productAndModernHtml,
   realisticPageHtml,
   renderedLoadingHtml,
+  renderedBlockedHtml,
   renderedModernHtml,
   sampleHtml,
   sampleImageTag,
   scrambledScoreValue,
+  targetedRenderedLoadingHtml,
+  targetedRenderedProductHtml,
   targetReviewWrap,
   verdictImageTag,
 };

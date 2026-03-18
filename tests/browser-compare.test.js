@@ -196,8 +196,8 @@ async function evaluateValue(cdpClient, expression) {
   return result.result.value;
 }
 
-async function waitForRenderedPrimaryScore(cdpClient, extractSource) {
-  const expression = `(${extractSource})(document)`;
+async function waitForRenderedPrimaryScore(cdpClient, extractSource, asin) {
+  const expression = `(${extractSource})(document, ${JSON.stringify(asin)})`;
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < WAIT_TIMEOUT_MS) {
@@ -348,7 +348,7 @@ test("browser-rendered top score visually matches the rendered DOM extractor out
     await session.cdpClient.send("Runtime.enable");
     await session.cdpClient.send("Page.navigate", { url });
 
-    const parsed = await waitForRenderedPrimaryScore(session.cdpClient, extractSource);
+    const parsed = await waitForRenderedPrimaryScore(session.cdpClient, extractSource, asin);
 
     assert.equal(parsed.ok, true);
     assert.ok(parsed.score.images.length >= 1);

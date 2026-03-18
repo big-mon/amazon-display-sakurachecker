@@ -35,21 +35,22 @@ function formatFailure(asin, result, error) {
   return parts.join(" ");
 }
 
-async function extractRenderedScore(page) {
-  return page.evaluate(({ extractSource }) => {
+async function extractRenderedScore(page, asin) {
+  return page.evaluate(({ extractSource, asin: requestedAsin }) => {
     const extract = Function(`return (${extractSource});`)();
-    return extract(document);
+    return extract(document, requestedAsin);
   }, {
     extractSource: renderedParser.extractRenderedScore.toString(),
+    asin,
   });
 }
 
-async function waitForRenderedScore(page) {
+async function waitForRenderedScore(page, asin) {
   const startedAt = Date.now();
   let lastResult = null;
 
   while (Date.now() - startedAt < renderTimeoutMs) {
-    const result = await extractRenderedScore(page);
+    const result = await extractRenderedScore(page, asin);
     if (result && result.ok) {
       return result;
     }
@@ -91,7 +92,7 @@ async function runLiveSmokeWithRetry(asin) {
         timeout: renderTimeoutMs,
       });
 
-      const result = await waitForRenderedScore(page);
+      const result = await waitForRenderedScore(page, asin);
       lastResult = result;
 
       assert.equal(result.ok, true, formatFailure(asin, result));
