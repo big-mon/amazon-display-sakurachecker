@@ -1,4 +1,9 @@
-importScripts("background/score-parser.js", "background/api-client.js");
+importScripts(
+  "background/rendered-score-parser.js",
+  "background/rendered-score-client.js",
+  "background/score-parser.js",
+  "background/api-client.js"
+);
 
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request?.action !== "checkSakuraScore") {

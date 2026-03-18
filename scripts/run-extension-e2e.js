@@ -12,6 +12,7 @@ const OUTPUT_DIR = path.join(process.cwd(), "output", "playwright");
 const FAILURE_SCREENSHOT_PATH = path.join(OUTPUT_DIR, "extension-e2e-failure.png");
 const SUCCESS_SCREENSHOT_PATH = path.join(OUTPUT_DIR, `extension-e2e-${DEFAULT_ASIN}.png`);
 const SETTLE_TIMEOUT_MS = Number(process.env.SAKURA_E2E_TIMEOUT_MS || 45000);
+const EXPECTED_SUFFIX = process.env.SAKURA_E2E_EXPECT_SUFFIX || "/5";
 const HEADLESS = process.env.PW_EXTENSION_HEADLESS !== "0";
 
 function ensureOutputDir() {
@@ -114,7 +115,7 @@ async function run() {
     if (panel.scoreImageCount < 1) {
       throw new Error("The Sakura Checker panel did not render any score images.");
     }
-    if (panel.scoreSuffix !== "%") {
+    if (panel.scoreSuffix !== EXPECTED_SUFFIX) {
       throw new Error(`Unexpected score suffix: ${panel.scoreSuffix || "<missing>"}`);
     }
 

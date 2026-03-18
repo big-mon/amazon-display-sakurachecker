@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
-const parser = require("../background/score-parser.js");
+const renderedParser = require("../background/rendered-score-parser.js");
 
 const CHROME_PATHS = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -18,20 +18,6 @@ const browserCompareEnabled = process.env.ENABLE_BROWSER_COMPARE === "1";
 
 function getChromePath() {
   return CHROME_PATHS.find((candidate) => fs.existsSync(candidate)) || null;
-}
-
-async function fetchHtml(url) {
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-    },
-  });
-
-  assert.equal(response.ok, true);
-  return response.text();
 }
 
 function delay(milliseconds) {
@@ -210,47 +196,20 @@ async function evaluateValue(cdpClient, expression) {
   return result.result.value;
 }
 
-async function waitForRenderedPrimaryScoreImages(cdpClient) {
-  const expression = `(() => {
-    const reviewLevel =
-      document.querySelector(".item-review-after .item-review-level") ||
-      document.querySelector(".item-review-level");
-    if (!reviewLevel) {
-      return null;
-    }
-
-    const reviewCard = reviewLevel.closest(".item-review-after") || reviewLevel.parentElement;
-    const rating =
-      reviewCard && reviewCard.querySelector
-        ? reviewCard.querySelector("p.item-rating")
-        : null;
-    if (!rating) {
-      return null;
-    }
-
-    const images = Array.from(rating.querySelectorAll("img")).map((image) => ({
-      src: image.getAttribute("src") || image.src,
-      alt: image.getAttribute("alt") || "",
-    }));
-
-    if (images.length < 2 || images.some((image) => !image.src || !image.src.startsWith("data:image/"))) {
-      return null;
-    }
-
-    return images;
-  })()`;
+async function waitForRenderedPrimaryScore(cdpClient, extractSource) {
+  const expression = `(${extractSource})(document)`;
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < WAIT_TIMEOUT_MS) {
-    const images = await evaluateValue(cdpClient, expression);
-    if (images) {
-      return images;
+    const result = await evaluateValue(cdpClient, expression);
+    if (result && result.ok) {
+      return result;
     }
 
     await delay(250);
   }
 
-  throw new Error("Timed out waiting for the rendered top score images.");
+  throw new Error("Timed out waiting for the rendered top score.");
 }
 
 async function compareRenderedScorePixels(cdpClient, parsedImages) {
@@ -283,27 +242,69 @@ async function compareRenderedScorePixels(cdpClient, parsedImages) {
       return canvas.toDataURL("image/png");
     }
 
+    function collectLegacySources() {
+      const candidates = Array.from(document.querySelectorAll(".item-review-wrap .item-info, .item-info"))
+        .map((itemInfo) => {
+          const imageGroups = Array.from(itemInfo.querySelectorAll("p.item-rating"))
+            .map((ratingNode) =>
+              Array.from(ratingNode.querySelectorAll("img")).map(
+                (image) => image.getAttribute("src") || image.src
+              )
+            )
+            .filter((group) => group.length);
+          if (!imageGroups.length) {
+            return null;
+          }
+
+          const richestGroup = imageGroups.reduce((best, current) =>
+            current.length > best.length ? current : best
+          );
+          const sources =
+            richestGroup.length > 1 ? richestGroup : imageGroups.flat();
+          let score = sources.length * 10;
+
+          if (itemInfo.querySelector(".item-review-level")) {
+            score += 100;
+          }
+          if (itemInfo.querySelector(".item-rv-score")) {
+            score += 50;
+          }
+          if (itemInfo.querySelector(".button-mini, .button.button-mini, .item-review-level a")) {
+            score += 25;
+          }
+
+          return { score, sources };
+        })
+        .filter(Boolean);
+
+      if (!candidates.length) {
+        return [];
+      }
+
+      return candidates.reduce((best, current) =>
+        current.score > best.score ? current : best
+      ).sources;
+    }
+
     return (async () => {
-      const reviewLevel =
-        document.querySelector(".item-review-after .item-review-level") ||
-        document.querySelector(".item-review-level");
-      if (!reviewLevel) {
-        return null;
+      const modernScoreRoot = document.querySelector(".sakura-alert .sakura-num");
+      const modernPercentRoot = modernScoreRoot && modernScoreRoot.querySelector(".sakura-num-per");
+      const modernSources = modernScoreRoot
+        ? Array.from(modernScoreRoot.querySelectorAll("img"))
+            .filter((image) => !modernPercentRoot || !modernPercentRoot.contains(image))
+            .map((image) => image.getAttribute("src") || image.src)
+        : [];
+      if (modernSources.length) {
+        return {
+          displayedCount: modernSources.length,
+          parsedCount: parsedSources.length,
+          displayedComposite: await renderSourcesToDataUrl(modernSources),
+          parsedComposite: await renderSourcesToDataUrl(parsedSources),
+        };
       }
 
-      const reviewCard = reviewLevel.closest(".item-review-after") || reviewLevel.parentElement;
-      const rating =
-        reviewCard && reviewCard.querySelector
-          ? reviewCard.querySelector("p.item-rating")
-          : null;
-      if (!rating) {
-        return null;
-      }
-
-      const displayedSources = Array.from(rating.querySelectorAll("img")).map(
-        (image) => image.getAttribute("src") || image.src
-      );
-      if (displayedSources.length < 2) {
+      const displayedSources = collectLegacySources();
+      if (!displayedSources.length) {
         return null;
       }
 
@@ -332,17 +333,13 @@ async function captureScreenshotOnFailure(cdpClient, asin) {
 
 const chromePath = getChromePath();
 
-test("browser-rendered top score visually matches the parsed raw HTML score for B095JGJCC7", {
+test("browser-rendered top score visually matches the rendered DOM extractor output for B095JGJCC7", {
   skip: !browserCompareEnabled || !chromePath || typeof WebSocket !== "function",
   timeout: 45000,
 }, async () => {
   const asin = "B095JGJCC7";
   const url = `https://sakura-checker.jp/search/${asin}/`;
-  const rawHtml = await fetchHtml(url);
-  const parsed = parser.parseVisualScore(rawHtml, asin);
-
-  assert.equal(parsed.ok, true);
-  assert.ok(parsed.score.images.length >= 2);
+  const extractSource = renderedParser.extractRenderedScore.toString();
 
   const session = await launchChrome(chromePath);
 
@@ -351,7 +348,11 @@ test("browser-rendered top score visually matches the parsed raw HTML score for 
     await session.cdpClient.send("Runtime.enable");
     await session.cdpClient.send("Page.navigate", { url });
 
-    await waitForRenderedPrimaryScoreImages(session.cdpClient);
+    const parsed = await waitForRenderedPrimaryScore(session.cdpClient, extractSource);
+
+    assert.equal(parsed.ok, true);
+    assert.ok(parsed.score.images.length >= 1);
+
     const comparison = await compareRenderedScorePixels(session.cdpClient, parsed.score.images);
 
     assert.ok(comparison, "Could not compare the rendered score images.");

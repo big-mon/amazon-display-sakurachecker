@@ -2,7 +2,6 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const apiClient = require("../background/api-client.js");
-const fixtures = require("./fixtures.js");
 
 function installChromeStorageStub() {
   const store = new Map();
@@ -41,29 +40,40 @@ test("buildSourceUrl creates the Sakura Checker search URL", () => {
   );
 });
 
-test("checkSakuraScore caches successful responses", async () => {
+test("checkSakuraScore caches successful rendered responses", async () => {
   const cleanup = installChromeStorageStub();
-  let fetchCalls = 0;
+  let fetchRenderedScoreCalls = 0;
 
   try {
-    const fetchImpl = async () => {
-      fetchCalls += 1;
+    const fetchRenderedScoreImpl = async () => {
+      fetchRenderedScoreCalls += 1;
       return {
         ok: true,
-        status: 200,
-        text: async () => fixtures.sampleHtml,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+          suffix: "/5",
+        },
+        verdict: {
+          kind: "visual-verdict",
+          image: {
+            src: "/images/rv_level03.png",
+            alt: "verdict",
+          },
+          lines: ["line 1", "line 2"],
+        },
       };
     };
 
     const first = await apiClient.checkSakuraScore({
       asin: "B08N5WRWNW",
       forceRefresh: false,
-      fetchImpl,
+      fetchRenderedScoreImpl,
     });
     const second = await apiClient.checkSakuraScore({
       asin: "B08N5WRWNW",
       forceRefresh: false,
-      fetchImpl,
+      fetchRenderedScoreImpl,
     });
 
     assert.equal(first.ok, true);
@@ -72,27 +82,27 @@ test("checkSakuraScore caches successful responses", async () => {
       kind: "visual-verdict",
       image: {
         src: "https://sakura-checker.jp/images/rv_level03.png",
-        alt: "判定",
+        alt: "verdict",
       },
-      lines: ["Amazonより", "かなり低いスコア"],
+      lines: ["line 1", "line 2"],
     });
     assert.equal(second.ok, true);
     assert.equal(second.cached, true);
     assert.deepEqual(second.verdict, first.verdict);
-    assert.equal(fetchCalls, 1);
+    assert.equal(fetchRenderedScoreCalls, 1);
   } finally {
     cleanup();
   }
 });
 
-test("checkSakuraScore returns blocked for rate limited responses", async () => {
+test("checkSakuraScore returns blocked when rendered extraction is blocked", async () => {
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
-    fetchImpl: async () => ({
+    fetchRenderedScoreImpl: async () => ({
       ok: false,
-      status: 429,
-      text: async () => "",
+      code: "blocked",
+      message: "Sakura Checker temporarily blocked the request.",
     }),
   });
 
@@ -100,14 +110,14 @@ test("checkSakuraScore returns blocked for rate limited responses", async () => 
   assert.equal(result.code, "blocked");
 });
 
-test("checkSakuraScore returns not_found for missing products", async () => {
+test("checkSakuraScore returns not_found when the product is missing", async () => {
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
-    fetchImpl: async () => ({
+    fetchRenderedScoreImpl: async () => ({
       ok: false,
-      status: 404,
-      text: async () => "",
+      code: "not_found",
+      message: "The product was not found on Sakura Checker.",
     }),
   });
 

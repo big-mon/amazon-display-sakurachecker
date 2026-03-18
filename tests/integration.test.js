@@ -1,23 +1,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { chromium } = require("playwright");
 
-const apiClient = require("../background/api-client.js");
+const renderedParser = require("../background/rendered-score-parser.js");
 
 const knownAsins = ["B0921THFXZ", "B095JGJCC7"];
 const retryDelaysMs = [1000, 3000];
 const liveSmokeTestTimeoutMs = 60000;
-
-function liveFetch(url, options) {
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...(options && options.headers ? options.headers : {}),
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-    },
-  });
-}
+const renderTimeoutMs = 30000;
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -32,7 +22,8 @@ function formatFailure(asin, result, error) {
         ok: result.ok,
         code: result.code,
         message: result.message,
-        sourceUrl: result.sourceUrl,
+        suffix: result.score ? result.score.suffix : null,
+        imageCount: result.score ? result.score.images.length : null,
       })}`
     );
   }
@@ -44,26 +35,72 @@ function formatFailure(asin, result, error) {
   return parts.join(" ");
 }
 
+async function extractRenderedScore(page) {
+  return page.evaluate(({ extractSource }) => {
+    const extract = Function(`return (${extractSource});`)();
+    return extract(document);
+  }, {
+    extractSource: renderedParser.extractRenderedScore.toString(),
+  });
+}
+
+async function waitForRenderedScore(page) {
+  const startedAt = Date.now();
+  let lastResult = null;
+
+  while (Date.now() - startedAt < renderTimeoutMs) {
+    const result = await extractRenderedScore(page);
+    if (result && result.ok) {
+      return result;
+    }
+
+    lastResult = result;
+    if (result && result.retryable) {
+      await delay(250);
+      continue;
+    }
+
+    return result;
+  }
+
+  return lastResult || {
+    ok: false,
+    code: "parse_error",
+    message: "Timed out waiting for Sakura Checker to render the score.",
+  };
+}
+
 async function runLiveSmokeWithRetry(asin) {
   let lastResult = null;
   let lastError = null;
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    let browser = null;
+
     try {
-      const result = await apiClient.checkSakuraScore({
-        asin,
-        forceRefresh: true,
-        fetchImpl: liveFetch,
+      browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage({
+        locale: "ja-JP",
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
       });
 
+      await page.goto(`https://sakura-checker.jp/search/${asin}/`, {
+        waitUntil: "domcontentloaded",
+        timeout: renderTimeoutMs,
+      });
+
+      const result = await waitForRenderedScore(page);
       lastResult = result;
 
       assert.equal(result.ok, true, formatFailure(asin, result));
       assert.equal(result.score.kind, "visual-image", formatFailure(asin, result));
+      assert.equal(result.score.suffix, "/5", formatFailure(asin, result));
       assert.ok(result.score.images.length >= 1, formatFailure(asin, result));
 
       for (const image of result.score.images) {
-        assert.match(image.src, /^data:image\/png;base64,/, formatFailure(asin, result));
+        assert.match(image.src, /^data:image\//, formatFailure(asin, result));
       }
 
       return result;
@@ -75,12 +112,16 @@ async function runLiveSmokeWithRetry(asin) {
       }
 
       await delay(retryDelaysMs[attempt]);
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
     }
   }
 }
 
 for (const asin of knownAsins) {
-  test(`live smoke returns score images for ${asin}`, { timeout: liveSmokeTestTimeoutMs }, async () => {
+  test(`live smoke returns rendered /5 score images for ${asin}`, { timeout: liveSmokeTestTimeoutMs }, async () => {
     await runLiveSmokeWithRetry(asin);
   });
 }

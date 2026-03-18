@@ -4,7 +4,9 @@
   "version": "1.0.1",
   "description": "Amazon.co.jpの商品ページで、サクラチェッカーの評価をその場で確認。別タブで調べる手間なく、購入判断をすばやくサポートします。",
   "permissions": [
-    "storage"
+    "storage",
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "https://www.amazon.co.jp/*",

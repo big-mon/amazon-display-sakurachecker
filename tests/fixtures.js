@@ -142,14 +142,192 @@ const realisticPageHtml = `
   </html>
 `;
 
+const multiRatingNoVerdictWrap = `
+  <div class="item-review-wrap">
+    <div class="item-image">
+      <a href="https://www.amazon.co.jp/dp/B0MULTI123/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+    </div>
+    <div class="item-info actual-layout">
+      <div class="item-review-box">
+        <div class="item-review-after">
+          <p class="item-rating"><span>${sampleImageTag.replace('alt="score"', 'alt="digit-1"')}</span>/5</p>
+          <p class="item-rating"><span>${sampleImageTag.replace('alt="score"', 'alt="digit-2"')}</span>/5</p>
+          <p class="item-rating"><span>${sampleImageTag.replace('alt="score"', 'alt="digit-3"')}</span>/5</p>
+        </div>
+      </div>
+    </div>
+  </div>
+`;
+
+const multiRatingNoVerdictHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      ${multiRatingNoVerdictWrap}
+    </body>
+  </html>
+`;
+
+const comparisonSecondaryItemInfo = `
+  <div class="item-info comparison-secondary">
+    <div class="item-review-box">
+      <div class="item-review-after">
+        <p class="item-logo"><img src="/images/logo_s.png" alt="logo"></p>
+        <p class="item-rating"><span>${sampleImageTag.replace('alt="score"', 'alt="secondary-digit"')}</span>/5</p>
+        <p class="item-num"><span class="boldtxt">12件</span>の評価</p>
+        <p class="item-rank"><a href="/ranking/1/">ランキング<span><span class="num">88</span>位</span></a></p>
+      </div>
+    </div>
+  </div>
+`;
+
+const comparisonPrimaryItemInfo = `
+  <div class="item-info comparison-primary">
+    <div class="item-review-box">
+      <div class="item-review-after">
+        <p class="item-logo"><img src="/images/logo_s.png" alt="logo"></p>
+        <p class="item-rating"><span>${sampleImageTag}${otherImageTag}${sampleImageTag.replace('alt="score"', 'alt="plus"')}</span>/5</p>
+        <span class="is-size-7">※他社からのサゲ評価検出<br>本来は更に高いスコア</span>
+        <p class="item-num"><span class="boldtxt">18177件</span>の評価</p>
+        <p class="item-rank"><a href="/ranking/3457072051/">ランキング<span><span class="num">40</span>位</span></a></p>
+      </div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv01"><img src="/images/rv_level01.png" alt="verdict"></p>
+        <p class="item-rv-score">Amazonと<br>同等のスコア</p>
+        <a href="https://www.amazon.co.jp/gp/customer-reviews/R194PYLE36254E/" class="button button-blue button-mini" target="_blank" rel="nofollow">
+          <img src="/images/icon_rv01.png" alt="best" class="icon">最も信頼できる高評価
+        </a>
+      </div>
+    </div>
+  </div>
+`;
+
+const comparisonHeavyProductHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0COMPARE1/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${comparisonSecondaryItemInfo}
+        ${comparisonPrimaryItemInfo}
+      </div>
+      <p class="item-btn"><a href="https://www.amazon.co.jp/dp/B0COMPARE1/?tag=sakurachecker-22"></a></p>
+    </body>
+  </html>
+`;
+
+const modernSakuraAlertMarkup = `
+  <p class="sakura-alert">サクラ度は<span class="sakura-num">${sampleImageTag}<span class="sakura-num-per">${otherImageTag}</span></span>です。</p>
+  <span class="sakura-msg is-size-6">安全な商品です！</span>
+`;
+
+const modernSakuraRatingMarkup = `
+  <p class="image sakura-rating"><img src="/images/sakura_lv00.png" alt="安全"></p>
+`;
+
+const modernSakuraAlertPayload = Buffer.from(
+  encodeURIComponent(modernSakuraAlertMarkup),
+  "utf8"
+).toString("base64");
+
+const modernSakuraRatingPayload = Buffer.from(
+  encodeURIComponent(modernSakuraRatingMarkup),
+  "utf8"
+).toString("base64");
+
+const modernInjectedHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="sakuraBlock">
+        <div class="inner">
+          <span id="modernAlertAnchor"></span>
+          <span id="modernRatingAnchor"></span>
+          <script>
+            var alertPayload = '${modernSakuraAlertPayload}';
+            $(function () {
+              $("#modernAlertAnchor").before(decodeURIComponent(atob(alertPayload)));
+            });
+            var ratingPayload = '${modernSakuraRatingPayload}';
+            $(function () {
+              $("#modernRatingAnchor").before(decodeURIComponent(atob(ratingPayload)));
+              $("#modernRatingAnchor").remove();
+            });
+          </script>
+        </div>
+      </div>
+    </body>
+  </html>
+`;
+
+const renderedModernHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="sakuraBlock">
+        <p class="sakura-alert">繧ｵ繧ｯ繝ｩ蠎ｦ縺ｯ<span class="sakura-num">${sampleImageTag}<span class="sakura-num-per">${otherImageTag}</span></span>縺ｧ縺吶・/p>
+        <span class="sakura-msg is-size-6">螳牙・縺ｪ蝠・刀縺ｧ縺呻ｼ・/span>
+        <p class="image sakura-rating"><img src="/images/sakura_lv00.png" alt="螳牙・"></p>
+      </div>
+    </body>
+  </html>
+`;
+
+const renderedLoadingHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div id="pagetop">
+        <div class="loader"></div>
+      </div>
+    </body>
+  </html>
+`;
+
+const productAndModernHtml = sampleHtml.replace(
+  "</body>",
+  `
+      <div class="sakuraBlock">
+        <div class="inner">
+          <span id="modernAlertAnchor"></span>
+          <span id="modernRatingAnchor"></span>
+          <script>
+            var alertPayload = '${modernSakuraAlertPayload}';
+            $(function () {
+              $("#modernAlertAnchor").before(decodeURIComponent(atob(alertPayload)));
+            });
+            var ratingPayload = '${modernSakuraRatingPayload}';
+            $(function () {
+              $("#modernRatingAnchor").before(decodeURIComponent(atob(ratingPayload)));
+              $("#modernRatingAnchor").remove();
+            });
+          </script>
+        </div>
+      </div>
+    </body>`
+);
+
 module.exports = {
+  comparisonHeavyProductHtml,
+  comparisonPrimaryItemInfo,
+  comparisonSecondaryItemInfo,
   htmlWithInjectedScore,
   injectedDecodedScript,
   injectedPayload,
   injectedScoreMarkup,
   injectedScript,
+  modernInjectedHtml,
+  modernSakuraAlertMarkup,
+  modernSakuraRatingMarkup,
+  multiRatingNoVerdictHtml,
+  multiRatingNoVerdictWrap,
   otherReviewWrap,
+  productAndModernHtml,
   realisticPageHtml,
+  renderedLoadingHtml,
+  renderedModernHtml,
   sampleHtml,
   sampleImageTag,
   scrambledScoreValue,

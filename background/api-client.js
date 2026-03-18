@@ -1,16 +1,17 @@
 (function (root, factory) {
   const exportsObject = factory(
-    root.ScoreParser,
-    typeof module !== "undefined" && module.exports ? require("./score-parser.js") : null
+    root.RenderedScoreClient,
+    typeof module !== "undefined" && module.exports
+      ? require("./rendered-score-client.js")
+      : null
   );
   if (typeof module !== "undefined" && module.exports) {
     module.exports = exportsObject;
   }
   root.ApiClient = exportsObject;
-})(typeof self !== "undefined" ? self : globalThis, function (workerParser, nodeParser) {
-  const ScoreParser = workerParser || nodeParser;
+})(typeof self !== "undefined" ? self : globalThis, function (workerClient, nodeClient) {
+  const RenderedScoreClient = workerClient || nodeClient;
   const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-  const FETCH_TIMEOUT_MS = 15000;
   const CACHE_PREFIX = "score:";
 
   function buildSourceUrl(asin) {
@@ -106,35 +107,17 @@
     await storageSet(cacheKey, payload);
   }
 
-  async function fetchSearchPage(asin, fetchImpl = fetch) {
-    const sourceUrl = buildSourceUrl(asin);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-    try {
-      const response = await fetchImpl(sourceUrl, {
-        method: "GET",
-        signal: controller.signal,
-        headers: {
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-        },
-        cache: "no-store",
-      });
-
-      return { response, sourceUrl };
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  async function checkSakuraScore({ asin, forceRefresh = false, fetchImpl = fetch }) {
+  async function checkSakuraScore({
+    asin,
+    forceRefresh = false,
+    fetchRenderedScoreImpl,
+  }) {
     const sourceUrl = buildSourceUrl(asin);
 
-    if (!ScoreParser) {
+    if (!RenderedScoreClient && typeof fetchRenderedScoreImpl !== "function") {
       return createFailure(
         "parse_error",
-        "The score parser is not available in the background context.",
+        "The rendered score client is not available in the background context.",
         sourceUrl
       );
     }
@@ -146,37 +129,33 @@
       }
     }
 
-    let responseData = null;
+    const fetchRenderedScore =
+      typeof fetchRenderedScoreImpl === "function"
+        ? fetchRenderedScoreImpl
+        : RenderedScoreClient.fetchRenderedScore;
+
+    let renderedResult = null;
     try {
-      responseData = await fetchSearchPage(asin, fetchImpl);
+      renderedResult = await fetchRenderedScore({
+        asin,
+        sourceUrl,
+      });
     } catch (error) {
-      const message =
-        error && error.name === "AbortError"
-          ? "Timed out while fetching Sakura Checker."
-          : "Failed to fetch Sakura Checker.";
-      return createFailure("network_error", message, sourceUrl);
-    }
-
-    const { response } = responseData;
-
-    if (response.status === 404) {
-      return createFailure("not_found", "The product was not found on Sakura Checker.", sourceUrl);
-    }
-    if (response.status === 403 || response.status === 429) {
-      return createFailure("blocked", "Sakura Checker temporarily blocked the request.", sourceUrl);
-    }
-    if (!response.ok) {
       return createFailure(
         "network_error",
-        `Unexpected response from Sakura Checker: ${response.status}.`,
+        error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
         sourceUrl
       );
     }
 
-    const html = await response.text();
-    const parsed = ScoreParser.parseVisualScore(html, asin);
-    if (!parsed.ok) {
-      return createFailure(parsed.code, parsed.message, sourceUrl);
+    if (!renderedResult || !renderedResult.ok) {
+      return createFailure(
+        renderedResult && renderedResult.code ? renderedResult.code : "parse_error",
+        renderedResult && renderedResult.message
+          ? renderedResult.message
+          : "Could not extract a rendered Sakura Checker score.",
+        sourceUrl
+      );
     }
 
     const payload = {
@@ -184,8 +163,8 @@
       cached: false,
       fetchedAt: new Date().toISOString(),
       sourceUrl,
-      score: parsed.score,
-      verdict: normalizeVerdict(parsed.verdict),
+      score: renderedResult.score,
+      verdict: normalizeVerdict(renderedResult.verdict),
     };
 
     await writeCache(asin, payload);
@@ -197,7 +176,6 @@
     buildSourceUrl,
     checkSakuraScore,
     createFailure,
-    fetchSearchPage,
     readCache,
     writeCache,
   };
