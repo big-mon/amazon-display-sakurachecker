@@ -44,6 +44,7 @@ logs/
 # Temporary files
 tmp/
 temp/
+output/
 
 # Claude Code
 .claude/*
