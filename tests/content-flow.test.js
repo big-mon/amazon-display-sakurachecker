@@ -280,6 +280,33 @@ test("UiDisplay renders the panel after the Amazon title area", () => {
   assert.equal(link.href, "https://sakura-checker.jp/search/B095JGJCC7/");
 });
 
+test("AsinExtractor ignores search result data-asin entries on non-product pages", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/s?k=keyboard");
+  const searchResult = document.createElement("div");
+  searchResult.setAttribute("data-asin", "B095JGJCC7");
+  document.body.appendChild(searchResult);
+
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
+  assert.equal(context.window.AsinExtractor.isProductPage(), false);
+});
+
+test("AsinExtractor reads the canonical product URL when pathname is not a product path", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/gp/aw");
+  const canonical = document.createElement("link");
+  canonical.setAttribute("rel", "canonical");
+  canonical.setAttribute("href", "https://www.amazon.co.jp/gp/aw/d/B095JGJCC7");
+  document.head.appendChild(canonical);
+
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), "B095JGJCC7");
+  assert.equal(context.window.AsinExtractor.isProductPage(), true);
+});
+
 test("SakuraChecker refresh shows loading first and then renders fetched score images", async () => {
   const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
   let resolveResponse = null;
@@ -335,4 +362,31 @@ test("SakuraChecker refresh shows loading first and then renders fetched score i
   assert.equal(images[0].src, "data:image/png;base64,AAA");
   assert.equal(images[1].src, "data:image/png;base64,BBB");
   assert.equal(images[2].src, "https://sakura-checker.jp/images/rv_level03.png");
+});
+
+test("SakuraChecker does not render or fetch on non-product pages that contain search-result ASINs", async () => {
+  const document = createPageDocument("https://www.amazon.co.jp/s?k=keyboard");
+  const searchResult = document.createElement("div");
+  searchResult.setAttribute("data-asin", "B095JGJCC7");
+  document.body.appendChild(searchResult);
+
+  let sendMessageCalled = false;
+  const chrome = {
+    runtime: {
+      sendMessage: async () => {
+        sendMessageCalled = true;
+        return { ok: true };
+      },
+    },
+  };
+  const context = createExecutionContext({ document, chrome });
+
+  loadScript(context, "content/asin-extractor.js");
+  loadScript(context, "content/ui-display.js");
+  loadScript(context, "content/sakura-checker.js");
+
+  await context.window.SakuraChecker.refreshForCurrentPage(false);
+
+  assert.equal(sendMessageCalled, false);
+  assert.equal(document.getElementById("sakura-checker-result"), null);
 });
