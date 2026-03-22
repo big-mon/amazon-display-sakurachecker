@@ -1,27 +1,24 @@
 (function () {
+  const PRODUCT_PATH_PATTERN = /\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i;
+
+  function extractAsinFromPath(path) {
+    const match = String(path || "").match(PRODUCT_PATH_PATTERN);
+    return match ? match[1].toUpperCase() : null;
+  }
+
   function extractProductASIN() {
-    const urlMatch = window.location.pathname.match(
-      /\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})/i
-    );
-    if (urlMatch) {
-      return urlMatch[1].toUpperCase();
+    const pathAsin = extractAsinFromPath(window.location.pathname);
+    if (pathAsin) {
+      return pathAsin;
     }
 
     const canonical = document.querySelector('link[rel="canonical"]');
     const canonicalHref = canonical && canonical.getAttribute("href");
     if (canonicalHref) {
-      const canonicalMatch = canonicalHref.match(
-        /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i
-      );
-      if (canonicalMatch) {
-        return canonicalMatch[1].toUpperCase();
+      const canonicalAsin = extractAsinFromPath(canonicalHref);
+      if (canonicalAsin) {
+        return canonicalAsin;
       }
-    }
-
-    const dataAsin = document.querySelector("[data-asin]");
-    const asinValue = dataAsin && dataAsin.getAttribute("data-asin");
-    if (asinValue && /^[A-Z0-9]{10}$/i.test(asinValue)) {
-      return asinValue.toUpperCase();
     }
 
     return null;
