@@ -18,6 +18,7 @@
   const inFlightRequests = new Map();
   let nextAllowedRequestAt = 0;
   let rateLimitChain = Promise.resolve();
+  let requestExecutionChain = Promise.resolve();
 
   function buildSourceUrl(asin) {
     return `https://sakura-checker.jp/search/${asin}/`;
@@ -137,10 +138,17 @@
     return reservation;
   }
 
+  function enqueueRequest(task) {
+    const queuedTask = requestExecutionChain.then(task, task);
+    requestExecutionChain = queuedTask.catch(() => {});
+    return queuedTask;
+  }
+
   function resetForTests() {
     inFlightRequests.clear();
     nextAllowedRequestAt = 0;
     rateLimitChain = Promise.resolve();
+    requestExecutionChain = Promise.resolve();
   }
 
   async function checkSakuraScore({
@@ -177,7 +185,7 @@
       return inFlightRequests.get(asin);
     }
 
-    const requestPromise = (async () => {
+    const requestPromise = enqueueRequest(async () => {
       let renderedResult = null;
 
       await waitForRateLimit({
@@ -221,7 +229,7 @@
       await writeCache(asin, payload);
 
       return payload;
-    })().finally(() => {
+    }).finally(() => {
       if (inFlightRequests.get(asin) === requestPromise) {
         inFlightRequests.delete(asin);
       }
