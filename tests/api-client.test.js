@@ -246,6 +246,50 @@ test("checkSakuraScore serializes concurrent requests for different ASINs", asyn
   assert.equal(second.score.images[0].alt, "B08SECOND0");
 });
 
+test("checkSakuraScore continues the queue after a request throws", async () => {
+  apiClient.__resetForTests();
+  const startedAsins = [];
+
+  const fetchRenderedScoreImpl = async ({ asin }) => {
+    startedAsins.push(asin);
+
+    if (asin === "B08FIRST00") {
+      throw new Error("Simulated Sakura Checker failure.");
+    }
+
+    return {
+      ok: true,
+      score: {
+        kind: "visual-image",
+        images: [{ src: `data:image/png;base64,${asin}`, alt: asin }],
+        suffix: "/5",
+      },
+      verdict: null,
+    };
+  };
+
+  const firstPromise = apiClient.checkSakuraScore({
+    asin: "B08FIRST00",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+  const secondPromise = apiClient.checkSakuraScore({
+    asin: "B08SECOND0",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+
+  assert.equal(first.ok, false);
+  assert.equal(second.ok, true);
+  assert.deepEqual(startedAsins, ["B08FIRST00", "B08SECOND0"]);
+});
+
 test("checkSakuraScore applies a global request interval between ASINs", async () => {
   apiClient.__resetForTests();
   const waits = [];
