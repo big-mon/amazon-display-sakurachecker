@@ -18,6 +18,7 @@
   const inFlightRequests = new Map();
   let nextAllowedRequestAt = 0;
   let rateLimitChain = Promise.resolve();
+  let requestExecutionChain = Promise.resolve();
 
   function buildSourceUrl(asin) {
     return `https://sakura-checker.jp/search/${asin}/`;
@@ -59,6 +60,34 @@
 
   function createFailure(code, message, sourceUrl) {
     return { ok: false, code, message, sourceUrl };
+  }
+
+  function hasValidScoreImage(image) {
+    return Boolean(
+      image &&
+      typeof image === "object" &&
+      typeof image.src === "string" &&
+      image.src.trim()
+    );
+  }
+
+  function hasValidScorePayload(score) {
+    return Boolean(
+      score &&
+      typeof score === "object" &&
+      Array.isArray(score.images) &&
+      score.images.length > 0 &&
+      score.images.every(hasValidScoreImage) &&
+      typeof score.suffix === "string"
+    );
+  }
+
+  function hasValidSuccessPayload(payload) {
+    return Boolean(
+      payload &&
+      payload.ok === true &&
+      hasValidScorePayload(payload.score)
+    );
   }
 
   function hasStorage() {
@@ -104,6 +133,10 @@
       return null;
     }
 
+    if (!hasValidSuccessPayload(cachedValue)) {
+      return null;
+    }
+
     return cachedValue;
   }
 
@@ -137,10 +170,17 @@
     return reservation;
   }
 
+  function enqueueRequest(task) {
+    const queuedTask = requestExecutionChain.then(task, task);
+    requestExecutionChain = queuedTask.catch(() => {});
+    return queuedTask;
+  }
+
   function resetForTests() {
     inFlightRequests.clear();
     nextAllowedRequestAt = 0;
     rateLimitChain = Promise.resolve();
+    requestExecutionChain = Promise.resolve();
   }
 
   async function checkSakuraScore({
@@ -177,7 +217,7 @@
       return inFlightRequests.get(asin);
     }
 
-    const requestPromise = (async () => {
+    const requestPromise = enqueueRequest(async () => {
       let renderedResult = null;
 
       await waitForRateLimit({
@@ -209,6 +249,14 @@
         );
       }
 
+      if (!hasValidSuccessPayload(renderedResult)) {
+        return createFailure(
+          "parse_error",
+          "The rendered Sakura Checker response did not include a usable score.",
+          sourceUrl
+        );
+      }
+
       const payload = {
         ok: true,
         cached: false,
@@ -221,7 +269,7 @@
       await writeCache(asin, payload);
 
       return payload;
-    })().finally(() => {
+    }).finally(() => {
       if (inFlightRequests.get(asin) === requestPromise) {
         inFlightRequests.delete(asin);
       }

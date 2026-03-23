@@ -178,6 +178,10 @@
     }
 
     function getLegacyCandidateData(itemInfo) {
+      const reviewCountText = normalizeText(
+        (itemInfo.querySelector(".item-num .boldtxt") || {}).textContent || ""
+      );
+      const reviewCount = Number(reviewCountText.replace(/[^\d]/g, "")) || 0;
       const ratingNodes = itemInfo.querySelectorAll("p.item-rating");
       const images = getRatingImages(ratingNodes);
       if (!images.length) {
@@ -211,6 +215,7 @@
 
       return {
         score,
+        reviewCount,
         scorePayload: {
           kind: "visual-image",
           images,
@@ -250,7 +255,11 @@
             return candidate;
           }
 
-          return candidate.score > best.score ? candidate : best;
+          if (candidate.score !== best.score) {
+            return candidate.score > best.score ? candidate : best;
+          }
+
+          return candidate.reviewCount > best.reviewCount ? candidate : best;
         }, null);
 
       if (!bestCandidate) {

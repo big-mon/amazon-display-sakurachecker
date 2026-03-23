@@ -102,6 +102,48 @@ test("checkSakuraScore caches successful rendered responses", async () => {
   }
 });
 
+test("checkSakuraScore ignores malformed cached successes and refetches", async () => {
+  apiClient.__resetForTests();
+  const cleanup = installChromeStorageStub();
+  let fetchRenderedScoreCalls = 0;
+
+  try {
+    await apiClient.writeCache("B08N5WRWNW", {
+      ok: true,
+      fetchedAt: new Date().toISOString(),
+      sourceUrl: "https://sakura-checker.jp/search/B08N5WRWNW/",
+      score: null,
+      verdict: null,
+    });
+
+    const result = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: false,
+      fetchRenderedScoreImpl: async () => {
+        fetchRenderedScoreCalls += 1;
+        return {
+          ok: true,
+          score: {
+            kind: "visual-image",
+            images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+            suffix: "/5",
+          },
+          verdict: null,
+        };
+      },
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.cached, false);
+    assert.equal(result.score.images.length, 1);
+    assert.equal(fetchRenderedScoreCalls, 1);
+  } finally {
+    cleanup();
+  }
+});
+
 test("checkSakuraScore returns blocked when rendered extraction is blocked", async () => {
   apiClient.__resetForTests();
   const result = await apiClient.checkSakuraScore({
@@ -118,6 +160,28 @@ test("checkSakuraScore returns blocked when rendered extraction is blocked", asy
 
   assert.equal(result.ok, false);
   assert.equal(result.code, "blocked");
+});
+
+test("checkSakuraScore rejects successful responses that do not include a usable score", async () => {
+  apiClient.__resetForTests();
+  const result = await apiClient.checkSakuraScore({
+    asin: "B08N5WRWNW",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async () => ({
+      ok: true,
+      score: {
+        kind: "visual-image",
+        images: [],
+        suffix: "/5",
+      },
+      verdict: null,
+    }),
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "parse_error");
 });
 
 test("checkSakuraScore returns not_found when the product is missing", async () => {
@@ -180,6 +244,114 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN", asyn
 
   const [first, second] = await Promise.all([firstPromise, secondPromise]);
   assert.deepEqual(second.score, first.score);
+});
+
+test("checkSakuraScore serializes concurrent requests for different ASINs", async () => {
+  apiClient.__resetForTests();
+  const startedAsins = [];
+  const resolvers = [];
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+
+  const fetchRenderedScoreImpl = async ({ asin }) => {
+    startedAsins.push(asin);
+    activeRequests += 1;
+    maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+
+    return new Promise((resolve) => {
+      resolvers.push(() => {
+        activeRequests -= 1;
+        resolve({
+          ok: true,
+          score: {
+            kind: "visual-image",
+            images: [{ src: `data:image/png;base64,${asin}`, alt: asin }],
+            suffix: "/5",
+          },
+          verdict: null,
+        });
+      });
+    });
+  };
+
+  const firstPromise = apiClient.checkSakuraScore({
+    asin: "B08N5WRWNW",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+  const secondPromise = apiClient.checkSakuraScore({
+    asin: "B08SECOND0",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(startedAsins, ["B08N5WRWNW"]);
+  assert.equal(maxActiveRequests, 1);
+  assert.equal(resolvers.length, 1);
+
+  resolvers[0]();
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(startedAsins, ["B08N5WRWNW", "B08SECOND0"]);
+  assert.equal(maxActiveRequests, 1);
+  assert.equal(resolvers.length, 2);
+
+  resolvers[1]();
+
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(first.score.images[0].alt, "B08N5WRWNW");
+  assert.equal(second.score.images[0].alt, "B08SECOND0");
+});
+
+test("checkSakuraScore continues the queue after a request throws", async () => {
+  apiClient.__resetForTests();
+  const startedAsins = [];
+
+  const fetchRenderedScoreImpl = async ({ asin }) => {
+    startedAsins.push(asin);
+
+    if (asin === "B08FIRST00") {
+      throw new Error("Simulated Sakura Checker failure.");
+    }
+
+    return {
+      ok: true,
+      score: {
+        kind: "visual-image",
+        images: [{ src: `data:image/png;base64,${asin}`, alt: asin }],
+        suffix: "/5",
+      },
+      verdict: null,
+    };
+  };
+
+  const firstPromise = apiClient.checkSakuraScore({
+    asin: "B08FIRST00",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+  const secondPromise = apiClient.checkSakuraScore({
+    asin: "B08SECOND0",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+
+  assert.equal(first.ok, false);
+  assert.equal(second.ok, true);
+  assert.deepEqual(startedAsins, ["B08FIRST00", "B08SECOND0"]);
 });
 
 test("checkSakuraScore applies a global request interval between ASINs", async () => {
