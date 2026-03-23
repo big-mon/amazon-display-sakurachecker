@@ -332,6 +332,62 @@ const wrapperScopedLegacyHtml = `
   </html>
 `;
 
+const repeatedDigitImageTag = '<img src="data:image/png;base64,LOWDIGIT" alt="repeat-digit">';
+const narrowSeparatorImageTag = '<img src="data:image/png;base64,SEPARATOR" alt="separator">';
+const distinctLargeImageTag = '<img src="data:image/png;base64,HIGH-A" alt="distinct-large">';
+const distinctWideImageTag = '<img src="data:image/png;base64,HIGH-B" alt="distinct-wide">';
+const distinctMediumImageTag = '<img src="data:image/png;base64,HIGH-C" alt="distinct-medium">';
+const distinctTailImageTag = '<img src="data:image/png;base64,HIGH-D" alt="distinct-tail">';
+
+const lowCountLegacyItemInfo = `
+  <div class="item-info low-count">
+    <div class="item-review-box">
+      <div class="item-review-after">
+        <p class="item-logo"><img src="/images/logo_s.png" alt="logo"></p>
+        <p class="item-rating"><span>${repeatedDigitImageTag}${narrowSeparatorImageTag}${repeatedDigitImageTag}${repeatedDigitImageTag}${repeatedDigitImageTag}</span>/5</p>
+        <p class="item-num"><span class="boldtxt">142件</span>の評価</p>
+      </div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv04"><img src="/images/rv_level04.png" alt="lower"></p>
+        <p class="item-rv-score">Amazonより<br>かなり低いスコア</p>
+        <a href="https://www.amazon.co.jp/gp/customer-reviews/R5JSDCZSAXGHW7/" class="button button-blue button-mini" target="_blank" rel="nofollow">サゲ評価</a>
+      </div>
+    </div>
+  </div>
+`;
+
+const highCountLegacyItemInfo = `
+  <div class="item-info high-count">
+    <div class="item-review-box">
+      <div class="item-review-after">
+        <p class="item-logo"><img src="/images/logo_s.png" alt="logo"></p>
+        <p class="item-rating"><span>${distinctLargeImageTag}${narrowSeparatorImageTag}${distinctWideImageTag}${distinctMediumImageTag}${distinctTailImageTag}</span>/5</p>
+        <p class="item-num"><span class="boldtxt">18177件</span>の評価</p>
+      </div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv01"><img src="/images/rv_level01.png" alt="higher"></p>
+        <p class="item-rv-score">Amazonと<br>同等のスコア</p>
+        <a href="https://www.amazon.co.jp/gp/customer-reviews/R194PYLE36254E/" class="button button-blue button-mini" target="_blank" rel="nofollow">高評価</a>
+      </div>
+    </div>
+  </div>
+`;
+
+const sameWrapReviewCountTiebreakHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B095JGJCC7/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${lowCountLegacyItemInfo}
+        ${highCountLegacyItemInfo}
+      </div>
+    </body>
+  </html>
+`;
+
 const renderedModernWithUnrelatedLegacyHtml = `
   <!DOCTYPE html>
   <html lang="ja">
@@ -512,6 +568,7 @@ module.exports = {
   renderedModernHtml,
   sampleHtml,
   sampleImageTag,
+  sameWrapReviewCountTiebreakHtml,
   scrambledScoreValue,
   targetedRenderedLoadingHtml,
   targetedRenderedProductHtml,

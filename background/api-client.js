@@ -61,6 +61,34 @@
     return { ok: false, code, message, sourceUrl };
   }
 
+  function hasValidScoreImage(image) {
+    return Boolean(
+      image &&
+      typeof image === "object" &&
+      typeof image.src === "string" &&
+      image.src.trim()
+    );
+  }
+
+  function hasValidScorePayload(score) {
+    return Boolean(
+      score &&
+      typeof score === "object" &&
+      Array.isArray(score.images) &&
+      score.images.length > 0 &&
+      score.images.every(hasValidScoreImage) &&
+      typeof score.suffix === "string"
+    );
+  }
+
+  function hasValidSuccessPayload(payload) {
+    return Boolean(
+      payload &&
+      payload.ok === true &&
+      hasValidScorePayload(payload.score)
+    );
+  }
+
   function hasStorage() {
     return (
       typeof chrome !== "undefined" &&
@@ -101,6 +129,10 @@
 
     const fetchedAt = Date.parse(cachedValue.fetchedAt);
     if (Number.isNaN(fetchedAt) || Date.now() - fetchedAt > CACHE_TTL_MS) {
+      return null;
+    }
+
+    if (!hasValidSuccessPayload(cachedValue)) {
       return null;
     }
 
@@ -205,6 +237,14 @@
           renderedResult && renderedResult.message
             ? renderedResult.message
             : "Could not extract a rendered Sakura Checker score.",
+          sourceUrl
+        );
+      }
+
+      if (!hasValidSuccessPayload(renderedResult)) {
+        return createFailure(
+          "parse_error",
+          "The rendered Sakura Checker response did not include a usable score.",
           sourceUrl
         );
       }
