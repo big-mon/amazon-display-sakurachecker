@@ -70,6 +70,20 @@ test("extractRenderedScore does not treat sibling cards as ASIN matches via the 
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level03.png");
 });
 
+test("extractRenderedScore prefers the highest-review legacy card when wrapper-scoped siblings tie structurally", () => {
+  const document = parseDocument(fixtures.sameWrapReviewCountTiebreakHtml);
+  const result = renderedParser.extractRenderedScore(document, "B095JGJCC7");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.suffix, "/5");
+  assert.deepEqual(
+    result.score.images.map((image) => image.alt),
+    ["distinct-large", "separator", "distinct-wide", "distinct-medium", "distinct-tail"]
+  );
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level01.png");
+});
+
 test("extractRenderedScore waits when only unrelated legacy cards are rendered for the requested ASIN", () => {
   const document = parseDocument(fixtures.targetedRenderedLoadingHtml);
   const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
