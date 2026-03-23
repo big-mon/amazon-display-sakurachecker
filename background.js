@@ -1,7 +1,6 @@
 importScripts(
   "background/rendered-score-parser.js",
   "background/rendered-score-client.js",
-  "background/score-parser.js",
   "background/api-client.js"
 );
 
@@ -12,7 +11,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
   self.ApiClient.checkSakuraScore({
     asin: request.asin,
-    amazonUrl: request.amazonUrl,
     forceRefresh: Boolean(request.forceRefresh),
   })
     .then((result) => sendResponse(result))

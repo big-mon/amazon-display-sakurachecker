@@ -24,16 +24,11 @@
     return null;
   }
 
-  function buildAmazonUrl(asin) {
-    return `https://www.amazon.co.jp/dp/${asin}`;
-  }
-
   function isProductPage() {
     return Boolean(extractProductASIN());
   }
 
   window.AsinExtractor = {
-    buildAmazonUrl,
     extractProductASIN,
     isProductPage,
   };

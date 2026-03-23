@@ -38,7 +38,6 @@
         const response = await chrome.runtime.sendMessage({
           action: "checkSakuraScore",
           asin,
-          amazonUrl: window.AsinExtractor.buildAmazonUrl(asin),
           forceRefresh: Boolean(forceRefresh),
         });
 
