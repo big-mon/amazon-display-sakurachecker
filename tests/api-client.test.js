@@ -295,6 +295,64 @@ test("checkSakuraScore falls back to an Amazon product URL search when itemsearc
   });
 });
 
+test("checkSakuraScore returns the fallback error when URL-search retry also fails", async () => {
+  apiClient.__testing.reset();
+  const calls = [];
+
+  const result = await apiClient.checkSakuraScore({
+    asin: "B0BJDY6D1W",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async (options) => {
+      calls.push(options);
+
+      if (calls.length === 1) {
+        return {
+          ok: false,
+          code: "url_search_required",
+          message: "Sakura Checker asked for an Amazon product URL search.",
+        };
+      }
+
+      return {
+        ok: false,
+        code: "blocked",
+        message: "Sakura Checker temporarily blocked the request.",
+      };
+    },
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "blocked");
+  assert.equal(calls.length, 2);
+});
+
+test("checkSakuraScore stops after one fallback when URL-search retry still requires a product URL", async () => {
+  apiClient.__testing.reset();
+  const calls = [];
+
+  const result = await apiClient.checkSakuraScore({
+    asin: "B0BJDY6D1W",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async (options) => {
+      calls.push(options);
+
+      return {
+        ok: false,
+        code: "url_search_required",
+        message: "Sakura Checker asked for an Amazon product URL search.",
+      };
+    },
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "url_search_required");
+  assert.equal(calls.length, 2);
+});
+
 test("checkSakuraScore deduplicates concurrent requests for the same ASIN", async () => {
   apiClient.__testing.reset();
   let fetchRenderedScoreCalls = 0;

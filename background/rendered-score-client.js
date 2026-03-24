@@ -233,7 +233,9 @@
   }
 
   function waitForTabReload(tabId, timeoutMs = DEFAULT_TIMEOUT_MS) {
-    return new Promise((resolve, reject) => {
+    let cleanup = () => {};
+
+    const promise = new Promise((resolve, reject) => {
       if (
         typeof chrome === "undefined" ||
         !chrome.tabs ||
@@ -248,7 +250,7 @@
       let sawLoading = false;
       let timeoutId = null;
 
-      function cleanup() {
+      cleanup = () => {
         if (settled) {
           return;
         }
@@ -283,11 +285,17 @@
 
       chrome.tabs.onUpdated.addListener(handleUpdated);
     });
+
+    return {
+      promise,
+      cancel() {
+        cleanup();
+      },
+    };
   }
 
   async function submitProductUrlSearch(tabId, amazonProductUrl, timeoutMs = DEFAULT_TIMEOUT_MS) {
-    const reloadPromise = waitForTabReload(tabId, timeoutMs);
-    const reloadDrainPromise = reloadPromise.catch(() => {});
+    const reloadHandle = waitForTabReload(tabId, timeoutMs);
     let submissionResult = null;
 
     try {
@@ -318,19 +326,31 @@
             };
           }
 
-          form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-          return { ok: true, method: "submit" };
+          if (typeof form.requestSubmit === "function") {
+            form.requestSubmit();
+            return { ok: true, method: "requestSubmit" };
+          }
+
+          if (typeof form.submit === "function") {
+            form.submit();
+            return { ok: true, method: "submit" };
+          }
+
+          return {
+            ok: false,
+            message: "The Sakura Checker search form could not be submitted.",
+          };
         },
         [amazonProductUrl],
         "Failed to submit the Sakura Checker URL search."
       );
     } catch (error) {
-      void reloadDrainPromise;
+      reloadHandle.cancel();
       throw error;
     }
 
     if (!submissionResult || submissionResult.ok !== true) {
-      void reloadDrainPromise;
+      reloadHandle.cancel();
       throw new Error(
         submissionResult && submissionResult.message
           ? submissionResult.message
@@ -338,7 +358,7 @@
       );
     }
 
-    await reloadPromise;
+    await reloadHandle.promise;
   }
 
   function waitForTabComplete(tabId, timeoutMs = DEFAULT_TIMEOUT_MS) {

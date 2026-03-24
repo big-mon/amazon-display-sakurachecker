@@ -7,6 +7,77 @@ function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function runUrlSearchScript(details, options = {}) {
+  const requestSubmitCalls = options.requestSubmitCalls || [];
+  const submitCalls = options.submitCalls || [];
+  const hasInput = options.hasInput !== false;
+  const hasForm = options.hasForm !== false;
+  const hasSetActionSearchForm = Boolean(options.hasSetActionSearchForm);
+  const hasRequestSubmit = options.hasRequestSubmit !== false;
+  const hasSubmit = options.hasSubmit !== false;
+  const productUrl = Array.isArray(details.args) ? details.args[0] : null;
+
+  const input = hasInput
+    ? {
+        value: "",
+        setAttribute(_name, value) {
+          this.value = value;
+        },
+      }
+    : null;
+  const form = hasForm
+    ? {
+        requestSubmit: hasRequestSubmit
+          ? () => {
+              requestSubmitCalls.push(productUrl);
+            }
+          : undefined,
+        submit: hasSubmit
+          ? () => {
+              submitCalls.push(productUrl);
+            }
+          : undefined,
+      }
+    : null;
+  const previousDocument = global.document;
+  const previousSelf = global.self;
+  const previousEvent = global.Event;
+
+  global.document = {
+    querySelector(selector) {
+      if (selector === "#urlsearchForm") {
+        return input;
+      }
+      if (selector === "#searchForm") {
+        return form;
+      }
+      return null;
+    },
+  };
+  global.self = hasSetActionSearchForm
+    ? {
+        setactionsearchForm() {
+          requestSubmitCalls.push(productUrl);
+        },
+      }
+    : {};
+  global.Event = class Event {
+    constructor(type, init = {}) {
+      this.type = type;
+      this.bubbles = Boolean(init.bubbles);
+      this.cancelable = Boolean(init.cancelable);
+    }
+  };
+
+  try {
+    return details.func(...details.args);
+  } finally {
+    global.document = previousDocument;
+    global.self = previousSelf;
+    global.Event = previousEvent;
+  }
+}
+
 function installChromeStub({
   completeDelayMs = 0,
   parserInjectionResponder,
@@ -17,6 +88,8 @@ function installChromeStub({
   const tabs = new Map();
   const createCalls = [];
   const removeCalls = [];
+  const requestSubmitCalls = [];
+  const submitCalls = [];
   let nextTabId = 1;
   let executeCalls = 0;
   let parserInjectionCalls = 0;
@@ -106,7 +179,10 @@ function installChromeStub({
         }
         callback([
           {
-            result: scriptResponder(details, extractCalls),
+            result: scriptResponder(details, extractCalls, {
+              requestSubmitCalls,
+              submitCalls,
+            }),
           },
         ]);
       },
@@ -116,6 +192,8 @@ function installChromeStub({
   return {
     createCalls,
     removeCalls,
+    requestSubmitCalls,
+    submitCalls,
     get executeCalls() {
       return executeCalls;
     },
@@ -276,17 +354,18 @@ test("fetchRenderedScore returns terminal extraction errors without retrying for
 
 test("fetchRenderedScore can trigger a Sakura Checker product URL search before extracting", async () => {
   const stub = installChromeStub({
-    scriptResponder(details) {
+    scriptResponder(details, _callCount, submissionState) {
       if (
         Array.isArray(details.args) &&
         details.args.length === 1 &&
         typeof details.args[0] === "string" &&
         /amazon\.co\.jp\/dp\/B0BJDY6D1W/.test(details.args[0])
       ) {
-        return {
-          ok: true,
-          method: "setactionsearchForm",
-        };
+        return runUrlSearchScript(details, {
+          requestSubmitCalls: submissionState.requestSubmitCalls,
+          submitCalls: submissionState.submitCalls,
+          hasSetActionSearchForm: true,
+        });
       }
 
       return {
@@ -312,26 +391,13 @@ test("fetchRenderedScore can trigger a Sakura Checker product URL search before 
 
     assert.equal(result.ok, true);
     assert.equal(stub.createCalls.length, 1);
-    assert.ok(stub.extractCalls >= 2);
-    assert.ok(
-      stub.executeDetails.some(
-        (details) =>
-          Array.isArray(details.args) &&
-          details.args[0] === "https://www.amazon.co.jp/dp/B0BJDY6D1W"
-      )
-    );
-    assert.ok(
-      stub.executeDetails.some(
-        (details) =>
-          Array.isArray(details.files) &&
-          details.files[0] === "background/rendered-score-parser.js"
-      )
-    );
-    assert.ok(
-      stub.executeDetails.some(
-        (details) => Array.isArray(details.args) && details.args[0] === "B0BJDY6D1W"
-      )
-    );
+    assert.equal(stub.extractCalls, 2);
+    assert.equal(stub.executeDetails.length, 3);
+    assert.deepEqual(stub.executeDetails[0].args, ["https://www.amazon.co.jp/dp/B0BJDY6D1W"]);
+    assert.deepEqual(stub.executeDetails[1].files, ["background/rendered-score-parser.js"]);
+    assert.deepEqual(stub.executeDetails[2].args, ["B0BJDY6D1W"]);
+    assert.deepEqual(stub.requestSubmitCalls, ["https://www.amazon.co.jp/dp/B0BJDY6D1W"]);
+    assert.deepEqual(stub.submitCalls, []);
   } finally {
     stub.cleanup();
   }
@@ -386,6 +452,51 @@ test("fetchRenderedScore drains the reload wait when URL search submission fails
     assert.deepEqual(unhandledRejections, []);
   } finally {
     process.removeListener("unhandledRejection", onUnhandledRejection);
+    stub.cleanup();
+  }
+});
+
+test("fetchRenderedScore falls back to form.submit when requestSubmit is unavailable", async () => {
+  const stub = installChromeStub({
+    scriptResponder(details, _callCount, submissionState) {
+      if (
+        Array.isArray(details.args) &&
+        details.args.length === 1 &&
+        typeof details.args[0] === "string" &&
+        /amazon\.co\.jp\/dp\/B0BJDY6D1W/.test(details.args[0])
+      ) {
+        return runUrlSearchScript(details, {
+          requestSubmitCalls: submissionState.requestSubmitCalls,
+          submitCalls: submissionState.submitCalls,
+          hasRequestSubmit: false,
+        });
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "4" }],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+  });
+
+  try {
+    const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B0BJDY6D1W",
+      sourceUrl: "https://sakura-checker.jp/search/B0BJDY6D1W/",
+      urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0BJDY6D1W",
+      timeoutMs: 200,
+      pollIntervalMs: 1,
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(stub.requestSubmitCalls, []);
+    assert.deepEqual(stub.submitCalls, ["https://www.amazon.co.jp/dp/B0BJDY6D1W"]);
+  } finally {
     stub.cleanup();
   }
 });
