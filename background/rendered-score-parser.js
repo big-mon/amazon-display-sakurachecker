@@ -5,7 +5,48 @@
   }
   root.RenderedScoreParser = exportsObject;
 })(typeof self !== "undefined" ? self : globalThis, function () {
-  function extractRenderedScore(rootNodeOrAsin, maybeRequestedAsin) {
+  function createFailure(code, message, retryable) {
+    return {
+      ok: false,
+      code,
+      message,
+      retryable,
+    };
+  }
+
+  function normalizeText(value) {
+    return String(value || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function createTextVerdict(lines) {
+    const normalizedLines = Array.isArray(lines)
+      ? lines.map(normalizeText).filter(Boolean)
+      : [];
+    if (!normalizedLines.length) {
+      return null;
+    }
+
+    return {
+      kind: "text-verdict",
+      lines: normalizedLines,
+    };
+  }
+
+  function buildRequestedAsinPattern(requestedAsin) {
+    if (!requestedAsin) {
+      return null;
+    }
+
+    return new RegExp(
+      `(?:/dp/|/gp/product/|/search/|\\b)${requestedAsin}(?:[/?#&]|$)`,
+      "i"
+    );
+  }
+
+  function createContext(rootNodeOrAsin, maybeRequestedAsin) {
     const root =
       rootNodeOrAsin && typeof rootNodeOrAsin.querySelector === "function"
         ? rootNodeOrAsin
@@ -14,539 +55,558 @@
       root === rootNodeOrAsin ? maybeRequestedAsin : rootNodeOrAsin;
 
     if (!root || typeof root.querySelector !== "function") {
-      return {
-        ok: false,
-        code: "parse_error",
-        message: "A DOM root is required to extract the rendered Sakura Checker score.",
-        retryable: false,
-      };
+      return null;
     }
 
-    function normalizeText(value) {
-      return String(value || "")
-        .replace(/\u00a0/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+    return {
+      requestedAsin,
+      requestedAsinPattern: buildRequestedAsinPattern(requestedAsin),
+      root,
+    };
+  }
+
+  function currentPathname(context) {
+    try {
+      if (context.root.location && context.root.location.pathname) {
+        return context.root.location.pathname;
+      }
+    } catch {
+      // Ignore DOM location access issues and fall back.
     }
 
-    function resolveUrl(value) {
-      if (!value) {
-        return value;
-      }
-
-      if (/^(?:data:|https?:|chrome-extension:)/i.test(value)) {
-        return value;
-      }
-
-      const baseUrl =
-        root.baseURI ||
-        ((root.location && root.location.href) || null) ||
-        (typeof location !== "undefined" ? location.href : null);
-
-      if (!baseUrl) {
-        return value;
-      }
-
-      try {
-        return new URL(value, baseUrl).toString();
-      } catch {
-        return value;
-      }
+    if (typeof location !== "undefined" && location.pathname) {
+      return location.pathname;
     }
 
-    function getImagePayload(image) {
-      if (!image) {
-        return null;
-      }
+    return "";
+  }
 
-      const src = resolveUrl(image.src || image.getAttribute("src") || "");
-      if (!src) {
-        return null;
+  function currentTitle(context) {
+    try {
+      if (typeof context.root.title === "string" && context.root.title) {
+        return context.root.title;
       }
-
-      return {
-        src,
-        alt: image.getAttribute("alt") || image.alt || "",
-      };
+    } catch {
+      // Ignore title access issues and fall back.
     }
 
-    function getRatingImages(ratingNodes) {
-      const imageGroups = Array.from(ratingNodes, (ratingNode) =>
-        Array.from(ratingNode.querySelectorAll("img"))
-          .map(getImagePayload)
-          .filter(Boolean)
-      ).filter((group) => group.length);
+    if (typeof document !== "undefined" && typeof document.title === "string") {
+      return document.title;
+    }
 
-      if (!imageGroups.length) {
-        return [];
-      }
+    return "";
+  }
 
-      const richestGroup = imageGroups.reduce((bestGroup, currentGroup) =>
-        currentGroup.length > bestGroup.length ? currentGroup : bestGroup
-      );
+  function resolveUrl(context, value) {
+    if (!value) {
+      return value;
+    }
 
-      if (richestGroup.length > 1) {
-        return richestGroup;
-      }
+    if (/^(?:data:|https?:|chrome-extension:)/i.test(value)) {
+      return value;
+    }
 
-      if (imageGroups.length > 1) {
-        return imageGroups.flat();
-      }
+    const baseUrl =
+      context.root.baseURI ||
+      ((context.root.location && context.root.location.href) || null) ||
+      (typeof location !== "undefined" ? location.href : null);
 
+    if (!baseUrl) {
+      return value;
+    }
+
+    try {
+      return new URL(value, baseUrl).toString();
+    } catch {
+      return value;
+    }
+  }
+
+  function getImagePayload(context, image) {
+    if (!image) {
+      return null;
+    }
+
+    const src = resolveUrl(context, image.src || image.getAttribute("src") || "");
+    if (!src) {
+      return null;
+    }
+
+    return {
+      src,
+      alt: image.getAttribute("alt") || image.alt || "",
+    };
+  }
+
+  function getRatingImages(context, ratingNodes) {
+    const imageGroups = Array.from(ratingNodes, (ratingNode) =>
+      Array.from(ratingNode.querySelectorAll("img"))
+        .map((image) => getImagePayload(context, image))
+        .filter(Boolean)
+    ).filter((group) => group.length);
+
+    if (!imageGroups.length) {
+      return [];
+    }
+
+    const richestGroup = imageGroups.reduce((bestGroup, currentGroup) =>
+      currentGroup.length > bestGroup.length ? currentGroup : bestGroup
+    );
+
+    if (richestGroup.length > 1) {
       return richestGroup;
     }
 
-    function getVerdictLines(node) {
-      if (!node) {
-        return [];
-      }
-
-      return node.innerHTML
-        .split(/<br\s*\/?>/i)
-        .map((segment) => normalizeText(segment.replace(/<[^>]+>/g, " ")))
-        .filter(Boolean);
+    if (imageGroups.length > 1) {
+      return imageGroups.flat();
     }
 
-    function createTextVerdict(lines) {
-      const normalizedLines = Array.isArray(lines)
-        ? lines.map(normalizeText).filter(Boolean)
-        : [];
-      if (!normalizedLines.length) {
-        return null;
-      }
+    return richestGroup;
+  }
 
-      return {
-        kind: "text-verdict",
-        lines: normalizedLines,
-      };
+  function getVerdictLines(node) {
+    if (!node) {
+      return [];
     }
 
-    function buildRequestedAsinPattern() {
-      if (!requestedAsin) {
-        return null;
-      }
+    return node.innerHTML
+      .split(/<br\s*\/?>/i)
+      .map((segment) => normalizeText(segment.replace(/<[^>]+>/g, " ")))
+      .filter(Boolean);
+  }
 
-      return new RegExp(
-        `(?:/dp/|/gp/product/|/search/|\\b)${requestedAsin}(?:[/?#&]|$)`,
-        "i"
-      );
+  function anchorMatchesRequestedAsin(context, anchor) {
+    if (!context.requestedAsinPattern || !anchor) {
+      return false;
     }
 
-    const requestedAsinPattern = buildRequestedAsinPattern();
+    return context.requestedAsinPattern.test(
+      String(anchor.getAttribute("href") || anchor.href || "")
+    );
+  }
 
-    function anchorMatchesRequestedAsin(anchor) {
-      if (!requestedAsinPattern || !anchor) {
+  function getDirectChildItemInfos(reviewWrap) {
+    if (!reviewWrap || !reviewWrap.children) {
+      return [];
+    }
+
+    return Array.from(reviewWrap.children).filter(
+      (child) =>
+        child &&
+        typeof child.matches === "function" &&
+        child.matches(".item-info")
+    );
+  }
+
+  function reviewWrapMatchesRequestedAsin(context, reviewWrap) {
+    if (!context.requestedAsinPattern || !reviewWrap) {
+      return false;
+    }
+
+    return Array.from(reviewWrap.querySelectorAll("a[href]")).some((anchor) =>
+      anchorMatchesRequestedAsin(context, anchor)
+    );
+  }
+
+  function hasExactRequestedAsinMatch(context, itemInfo) {
+    if (!context.requestedAsin) {
+      return false;
+    }
+
+    const ownAnchors = Array.from(itemInfo.querySelectorAll("a[href]"));
+    if (ownAnchors.some((anchor) => anchorMatchesRequestedAsin(context, anchor))) {
+      return true;
+    }
+
+    return String(itemInfo.outerHTML || "").includes(context.requestedAsin);
+  }
+
+  function hasPendingRequestedLegacyCard(context) {
+    if (!context.requestedAsinPattern) {
+      return false;
+    }
+
+    return Array.from(context.root.querySelectorAll(".item-review-wrap")).some((reviewWrap) => {
+      const anchors = Array.from(reviewWrap.querySelectorAll("a[href]"));
+      if (!anchors.some((anchor) => anchorMatchesRequestedAsin(context, anchor))) {
         return false;
       }
 
-      return requestedAsinPattern.test(
-        String(anchor.getAttribute("href") || anchor.href || "")
-      );
+      return Boolean(reviewWrap.querySelector(".loader, .loading")) ||
+        !reviewWrap.querySelector(".item-info");
+    });
+  }
+
+  function getLegacyCandidateData(context, itemInfo) {
+    const reviewCountText = normalizeText(
+      (itemInfo.querySelector(".item-num .boldtxt") || {}).textContent || ""
+    );
+    const reviewCount = Number(reviewCountText.replace(/[^\d]/g, "")) || 0;
+    const ratingNodes = itemInfo.querySelectorAll("p.item-rating");
+    const images = getRatingImages(context, ratingNodes);
+    if (!images.length) {
+      return null;
     }
 
-    function getDirectChildItemInfos(reviewWrap) {
-      if (!reviewWrap || !reviewWrap.children) {
-        return [];
-      }
+    const verdictRoot = itemInfo.querySelector(".item-review-level");
+    const verdictImage = getImagePayload(
+      context,
+      verdictRoot && verdictRoot.querySelector(".item-rv-lv img, .item-rv-lv-image img, img")
+    );
+    const verdictLines = getVerdictLines(
+      verdictRoot && verdictRoot.querySelector(".item-rv-score")
+    );
 
-      return Array.from(reviewWrap.children).filter(
-        (child) =>
-          child &&
-          typeof child.matches === "function" &&
-          child.matches(".item-info")
-      );
+    let score = images.length * 10;
+    if (verdictRoot) {
+      score += 100;
+    }
+    if (itemInfo.querySelector(".item-rv-score")) {
+      score += 50;
+    }
+    if (itemInfo.querySelector(".button-mini, .button.button-mini, .item-review-level a")) {
+      score += 25;
+    }
+    if (verdictImage) {
+      score += 15;
+    }
+    if (normalizeText(itemInfo.textContent).includes("/5")) {
+      score += 5;
     }
 
-    function reviewWrapMatchesRequestedAsin(reviewWrap) {
-      if (!requestedAsinPattern || !reviewWrap) {
+    return {
+      reviewCount,
+      score,
+      scorePayload: {
+        kind: "visual-image",
+        images,
+        suffix: "/5",
+      },
+      verdict:
+        verdictImage && verdictLines.length
+          ? {
+              kind: "visual-verdict",
+              image: verdictImage,
+              lines: verdictLines,
+            }
+          : null,
+    };
+  }
+
+  function collectLegacyCandidates(context, allowAmbiguousMatches) {
+    const seen = new Set();
+    const candidates = Array.from(
+      context.root.querySelectorAll(".item-review-wrap .item-info, .item-info")
+    ).filter((itemInfo) => {
+      if (seen.has(itemInfo)) {
         return false;
       }
+      seen.add(itemInfo);
+      return true;
+    });
 
-      return Array.from(reviewWrap.querySelectorAll("a[href]")).some(anchorMatchesRequestedAsin);
-    }
+    let matchingCandidates = candidates;
+    let scopedCandidates = candidates;
 
-    function hasExactRequestedAsinMatch(itemInfo) {
-      if (!requestedAsin) {
-        return false;
-      }
-
-      const ownAnchors = Array.from(itemInfo.querySelectorAll("a[href]"));
-      if (ownAnchors.some(anchorMatchesRequestedAsin)) {
-        return true;
-      }
-
-      return String(itemInfo.outerHTML || "").includes(requestedAsin);
-    }
-
-    function hasPendingRequestedLegacyCard() {
-      if (!requestedAsinPattern) {
-        return false;
-      }
-
-      return Array.from(root.querySelectorAll(".item-review-wrap")).some((reviewWrap) => {
-        const anchors = Array.from(reviewWrap.querySelectorAll("a[href]"));
-        if (!anchors.some(anchorMatchesRequestedAsin)) {
-          return false;
-        }
-
-        return Boolean(reviewWrap.querySelector(".loader, .loading")) ||
-          !reviewWrap.querySelector(".item-info");
-      });
-    }
-
-    function getLegacyCandidateData(itemInfo) {
-      const reviewCountText = normalizeText(
-        (itemInfo.querySelector(".item-num .boldtxt") || {}).textContent || ""
-      );
-      const reviewCount = Number(reviewCountText.replace(/[^\d]/g, "")) || 0;
-      const ratingNodes = itemInfo.querySelectorAll("p.item-rating");
-      const images = getRatingImages(ratingNodes);
-      if (!images.length) {
-        return null;
-      }
-
-      const verdictRoot = itemInfo.querySelector(".item-review-level");
-      const verdictImage = getImagePayload(
-        verdictRoot && verdictRoot.querySelector(".item-rv-lv img, .item-rv-lv-image img, img")
-      );
-      const verdictLines = getVerdictLines(
-        verdictRoot && verdictRoot.querySelector(".item-rv-score")
+    if (context.requestedAsin) {
+      const matchingWraps = Array.from(context.root.querySelectorAll(".item-review-wrap")).filter(
+        (reviewWrap) => reviewWrapMatchesRequestedAsin(context, reviewWrap)
       );
 
-      let score = images.length * 10;
-      if (verdictRoot) {
-        score += 100;
-      }
-      if (itemInfo.querySelector(".item-rv-score")) {
-        score += 50;
-      }
-      if (itemInfo.querySelector(".button-mini, .button.button-mini, .item-review-level a")) {
-        score += 25;
-      }
-      if (verdictImage) {
-        score += 15;
-      }
-      if (normalizeText(itemInfo.textContent).includes("/5")) {
-        score += 5;
-      }
+      const exactCandidates = matchingWraps.flatMap((reviewWrap) =>
+        getDirectChildItemInfos(reviewWrap).filter((itemInfo) =>
+          hasExactRequestedAsinMatch(context, itemInfo)
+        )
+      );
 
-      return {
-        score,
-        reviewCount,
-        scorePayload: {
-          kind: "visual-image",
-          images,
-          suffix: "/5",
-        },
-        verdict:
-          verdictImage && verdictLines.length
-            ? {
-                kind: "visual-verdict",
-                image: verdictImage,
-                lines: verdictLines,
-              }
-            : null,
-      };
-    }
-
-    function extractLegacyScore(options = {}) {
-      const allowAmbiguousMatches = Boolean(options.allowAmbiguousMatches);
-      const seen = new Set();
-      const candidates = Array.from(
-        root.querySelectorAll(".item-review-wrap .item-info, .item-info")
-      ).filter((itemInfo) => {
-        if (seen.has(itemInfo)) {
-          return false;
-        }
-        seen.add(itemInfo);
-        return true;
-      });
-
-      let scopedCandidates = candidates;
-      let matchingCandidates = candidates;
-
-      if (requestedAsin) {
-        const matchingWraps = Array.from(root.querySelectorAll(".item-review-wrap")).filter(
-          reviewWrapMatchesRequestedAsin
+      if (exactCandidates.length) {
+        matchingCandidates = exactCandidates;
+        scopedCandidates = exactCandidates;
+      } else {
+        const ambiguousWrapCandidates = matchingWraps.flatMap((reviewWrap) =>
+          getDirectChildItemInfos(reviewWrap)
         );
+        const singleCardWrapCandidates = matchingWraps
+          .map((reviewWrap) => getDirectChildItemInfos(reviewWrap))
+          .filter((itemInfos) => itemInfos.length === 1)
+          .map((itemInfos) => itemInfos[0]);
 
-        const exactCandidates = matchingWraps.flatMap((reviewWrap) =>
-          getDirectChildItemInfos(reviewWrap).filter(hasExactRequestedAsinMatch)
-        );
-
-        if (exactCandidates.length) {
-          matchingCandidates = exactCandidates;
-          scopedCandidates = exactCandidates;
+        if (singleCardWrapCandidates.length) {
+          matchingCandidates = singleCardWrapCandidates;
+          scopedCandidates = singleCardWrapCandidates;
+        } else if (allowAmbiguousMatches && ambiguousWrapCandidates.length) {
+          matchingCandidates = ambiguousWrapCandidates;
+          scopedCandidates = ambiguousWrapCandidates;
         } else {
-          const ambiguousWrapCandidates = matchingWraps.flatMap((reviewWrap) =>
-            getDirectChildItemInfos(reviewWrap)
-          );
-          const singleCardWrapCandidates = matchingWraps
-            .map((reviewWrap) => getDirectChildItemInfos(reviewWrap))
-            .filter((itemInfos) => itemInfos.length === 1)
-            .map((itemInfos) => itemInfos[0]);
-
-          if (singleCardWrapCandidates.length) {
-            matchingCandidates = singleCardWrapCandidates;
-            scopedCandidates = singleCardWrapCandidates;
-          } else if (allowAmbiguousMatches && ambiguousWrapCandidates.length) {
-            matchingCandidates = ambiguousWrapCandidates;
-            scopedCandidates = ambiguousWrapCandidates;
-          } else {
-            matchingCandidates = [];
-            scopedCandidates = [];
-          }
+          matchingCandidates = [];
+          scopedCandidates = [];
         }
       }
+    }
 
-      const bestCandidate = scopedCandidates
-        .map(getLegacyCandidateData)
+    return {
+      candidates,
+      matchingCandidates,
+      scopedCandidates,
+    };
+  }
+
+  function pickBestLegacyCandidate(candidateDataList) {
+    return candidateDataList.reduce((best, candidate) => {
+      if (!best) {
+        return candidate;
+      }
+
+      if (candidate.score !== best.score) {
+        return candidate.score > best.score ? candidate : best;
+      }
+
+      return candidate.reviewCount > best.reviewCount ? candidate : best;
+    }, null);
+  }
+
+  function extractLegacyScore(context, options = {}) {
+    const allowAmbiguousMatches = Boolean(options.allowAmbiguousMatches);
+    const { candidates, matchingCandidates, scopedCandidates } = collectLegacyCandidates(
+      context,
+      allowAmbiguousMatches
+    );
+    const bestCandidate = pickBestLegacyCandidate(
+      scopedCandidates
+        .map((itemInfo) => getLegacyCandidateData(context, itemInfo))
         .filter(Boolean)
-        .reduce((best, candidate) => {
-          if (!best) {
-            return candidate;
-          }
+    );
 
-          if (candidate.score !== best.score) {
-            return candidate.score > best.score ? candidate : best;
-          }
-
-          return candidate.reviewCount > best.reviewCount ? candidate : best;
-        }, null);
-
-      if (!bestCandidate) {
-        if (requestedAsin && candidates.length && !matchingCandidates.length && hasPendingRequestedLegacyCard()) {
-          return {
-            ok: false,
-            code: "not_ready",
-            message: "Rendered Sakura Checker product card is not available yet.",
-            retryable: true,
-          };
-        }
-
-        return null;
-      }
-
-      return {
-        ok: true,
-        score: bestCandidate.scorePayload,
-        verdict: bestCandidate.verdict,
-      };
-    }
-
-    function extractItemSearchScore() {
-      const candidates = Array.from(root.querySelectorAll('[name="searchitem"]'));
-      if (!candidates.length) {
-        return null;
-      }
-
-      const matchingCandidate = candidates.find((candidate) => {
-        if (!requestedAsinPattern) {
-          return true;
-        }
-
-        return Array.from(candidate.querySelectorAll("a[href]")).some(anchorMatchesRequestedAsin);
-      });
-
-      if (!matchingCandidate) {
-        return null;
-      }
-
-      const scoreNode = matchingCandidate.querySelector(".item-info .item-rating, .item-rating");
-      const scoreText = normalizeText((scoreNode || {}).textContent || "");
-      const scoreMatch = scoreText.match(/([0-9]+(?:\.[0-9]+)?)\s*\/\s*5/i);
-      if (!scoreMatch) {
-        return null;
-      }
-
-      const sakuraPercentText = normalizeText(
-        (
-          matchingCandidate.querySelector(".item-info .item-sakura .is-size-7, .item-sakura .is-size-7") ||
-          {}
-        ).textContent || ""
-      );
-      const levelText = normalizeText(
-        (matchingCandidate.querySelector(".item-info .item-lv, .item-lv") || {}).textContent || ""
-      );
-
-      const verdictLines = [];
-      if (levelText) {
-        verdictLines.push(levelText);
-      }
-      if (sakuraPercentText) {
-        verdictLines.push(`サクラ度 ${sakuraPercentText}`);
-      }
-
-      return {
-        ok: true,
-        score: {
-          kind: "text",
-          value: scoreMatch[1],
-          suffix: "/5",
-        },
-        verdict: createTextVerdict(verdictLines),
-      };
-    }
-
-    function extractModernScore() {
-      const alertRoot = root.querySelector(".sakura-alert");
-      const scoreRoot = alertRoot && alertRoot.querySelector(".sakura-num");
-      if (!scoreRoot) {
-        return null;
-      }
-
-      const percentRoot = scoreRoot.querySelector(".sakura-num-per");
-      const images = Array.from(scoreRoot.querySelectorAll("img"))
-        .filter((image) => !percentRoot || !percentRoot.contains(image))
-        .map(getImagePayload)
-        .filter(Boolean);
-
-      if (!images.length) {
-        return null;
-      }
-
-      const verdictImage = getImagePayload(root.querySelector(".sakura-rating img"));
-      const verdictLine = normalizeText(
-        (root.querySelector(".sakura-msg") || {}).textContent || ""
-      );
-
-      return {
-        ok: true,
-        score: {
-          kind: "visual-image",
-          images,
-          suffix: "%",
-        },
-        verdict:
-          verdictImage && verdictLine
-            ? {
-                kind: "visual-verdict",
-                image: verdictImage,
-                lines: [verdictLine],
-              }
-            : null,
-      };
-    }
-
-    function currentPathname() {
-      try {
-        if (root.location && root.location.pathname) {
-          return root.location.pathname;
-        }
-      } catch {
-        // Ignore DOM location access issues and fall back.
-      }
-
-      if (typeof location !== "undefined" && location.pathname) {
-        return location.pathname;
-      }
-
-      return "";
-    }
-
-    function currentTitle() {
-      try {
-        if (typeof root.title === "string" && root.title) {
-          return root.title;
-        }
-      } catch {
-        // Ignore title access issues and fall back.
-      }
-
-      if (typeof document !== "undefined" && typeof document.title === "string") {
-        return document.title;
-      }
-
-      return "";
-    }
-
-    function detectBlockedPage() {
-      const pathname = currentPathname();
-      if (/\/error\/(?:accessdenied|forbidden|blocked|captcha)\//i.test(pathname)) {
-        return {
-          ok: false,
-          code: "blocked",
-          message: "Sakura Checker temporarily blocked the request.",
-          retryable: false,
-        };
-      }
-
-      const title = normalizeText(currentTitle()).toLowerCase();
-      const bodyText = normalizeText((root.body && root.body.textContent) || root.textContent || "");
-      const bodyTextLower = bodyText.toLowerCase();
-      const blockedPatterns = [
-        /too many requests/i,
-        /access denied/i,
-        /forbidden/i,
-        /captcha/i,
-        /recaptcha/i,
-        /アクセスが集中/i,
-        /アクセス制限/i,
-        /しばらく待/i,
-        /botではないこと/i,
-      ];
-
-      if (blockedPatterns.some((pattern) => pattern.test(title) || pattern.test(bodyTextLower) || pattern.test(bodyText))) {
-        return {
-          ok: false,
-          code: "blocked",
-          message: "Sakura Checker temporarily blocked the request.",
-          retryable: false,
-        };
+    if (!bestCandidate) {
+      if (
+        context.requestedAsin &&
+        candidates.length &&
+        !matchingCandidates.length &&
+        hasPendingRequestedLegacyCard(context)
+      ) {
+        return createFailure(
+          "not_ready",
+          "Rendered Sakura Checker product card is not available yet.",
+          true
+        );
       }
 
       return null;
     }
 
-    const blocked = detectBlockedPage();
+    return {
+      ok: true,
+      score: bestCandidate.scorePayload,
+      verdict: bestCandidate.verdict,
+    };
+  }
+
+  function extractItemSearchScore(context) {
+    const candidates = Array.from(context.root.querySelectorAll('[name="searchitem"]'));
+    if (!candidates.length) {
+      return null;
+    }
+
+    const matchingCandidate = candidates.find((candidate) => {
+      if (!context.requestedAsinPattern) {
+        return true;
+      }
+
+      return Array.from(candidate.querySelectorAll("a[href]")).some((anchor) =>
+        anchorMatchesRequestedAsin(context, anchor)
+      );
+    });
+
+    if (!matchingCandidate) {
+      return null;
+    }
+
+    const scoreNode = matchingCandidate.querySelector(".item-info .item-rating, .item-rating");
+    const scoreText = normalizeText((scoreNode || {}).textContent || "");
+    const scoreMatch = scoreText.match(/([0-9]+(?:\.[0-9]+)?)\s*\/\s*5/i);
+    if (!scoreMatch) {
+      return null;
+    }
+
+    const sakuraPercentText = normalizeText(
+      (
+        matchingCandidate.querySelector(".item-info .item-sakura .is-size-7, .item-sakura .is-size-7") ||
+        {}
+      ).textContent || ""
+    );
+    const levelText = normalizeText(
+      (matchingCandidate.querySelector(".item-info .item-lv, .item-lv") || {}).textContent || ""
+    );
+
+    const verdictLines = [];
+    if (levelText) {
+      verdictLines.push(levelText);
+    }
+    if (sakuraPercentText) {
+      verdictLines.push(`サクラ度 ${sakuraPercentText}`);
+    }
+
+    return {
+      ok: true,
+      score: {
+        kind: "text",
+        value: scoreMatch[1],
+        suffix: "/5",
+      },
+      verdict: createTextVerdict(verdictLines),
+    };
+  }
+
+  function extractModernScore(context) {
+    const alertRoot = context.root.querySelector(".sakura-alert");
+    const scoreRoot = alertRoot && alertRoot.querySelector(".sakura-num");
+    if (!scoreRoot) {
+      return null;
+    }
+
+    const percentRoot = scoreRoot.querySelector(".sakura-num-per");
+    const images = Array.from(scoreRoot.querySelectorAll("img"))
+      .filter((image) => !percentRoot || !percentRoot.contains(image))
+      .map((image) => getImagePayload(context, image))
+      .filter(Boolean);
+
+    if (!images.length) {
+      return null;
+    }
+
+    const verdictImage = getImagePayload(context, context.root.querySelector(".sakura-rating img"));
+    const verdictLine = normalizeText(
+      (context.root.querySelector(".sakura-msg") || {}).textContent || ""
+    );
+
+    return {
+      ok: true,
+      score: {
+        kind: "visual-image",
+        images,
+        suffix: "%",
+      },
+      verdict:
+        verdictImage && verdictLine
+          ? {
+              kind: "visual-verdict",
+              image: verdictImage,
+              lines: [verdictLine],
+            }
+          : null,
+    };
+  }
+
+  function detectBlockedPage(context) {
+    const pathname = currentPathname(context);
+    if (/\/error\/(?:accessdenied|forbidden|blocked|captcha)\//i.test(pathname)) {
+      return createFailure(
+        "blocked",
+        "Sakura Checker temporarily blocked the request.",
+        false
+      );
+    }
+
+    const title = normalizeText(currentTitle(context)).toLowerCase();
+    const bodyText = normalizeText(
+      (context.root.body && context.root.body.textContent) || context.root.textContent || ""
+    );
+    const bodyTextLower = bodyText.toLowerCase();
+    const blockedPatterns = [
+      /too many requests/i,
+      /access denied/i,
+      /forbidden/i,
+      /captcha/i,
+      /recaptcha/i,
+      /アクセスが集中/i,
+      /アクセス制限/i,
+      /しばらく待/i,
+      /botではないこと/i,
+    ];
+
+    if (
+      blockedPatterns.some(
+        (pattern) =>
+          pattern.test(title) || pattern.test(bodyTextLower) || pattern.test(bodyText)
+      )
+    ) {
+      return createFailure(
+        "blocked",
+        "Sakura Checker temporarily blocked the request.",
+        false
+      );
+    }
+
+    return null;
+  }
+
+  function detectMissingProduct(context) {
+    if (/\/error\/notfound\//.test(currentPathname(context))) {
+      return createFailure(
+        "not_found",
+        "The product was not found on Sakura Checker.",
+        false
+      );
+    }
+
+    return null;
+  }
+
+  function buildFallbackResult(context) {
+    const hasLoadingSignals = Boolean(
+      context.root.querySelector(".loader, .loading, .item-review-wrap, .sakuraBlock, #pagetop")
+    );
+
+    return createFailure(
+      hasLoadingSignals ? "not_ready" : "parse_error",
+      hasLoadingSignals
+        ? "Rendered Sakura Checker score is not available yet."
+        : "Could not locate a rendered Sakura Checker score.",
+      hasLoadingSignals
+    );
+  }
+
+  function extractRenderedScore(rootNodeOrAsin, maybeRequestedAsin) {
+    const context = createContext(rootNodeOrAsin, maybeRequestedAsin);
+    if (!context) {
+      return createFailure(
+        "parse_error",
+        "A DOM root is required to extract the rendered Sakura Checker score.",
+        false
+      );
+    }
+
+    const blocked = detectBlockedPage(context);
     if (blocked) {
       return blocked;
     }
 
-    if (/\/error\/notfound\//.test(currentPathname())) {
-      return {
-        ok: false,
-        code: "not_found",
-        message: "The product was not found on Sakura Checker.",
-        retryable: false,
-      };
+    const missingProduct = detectMissingProduct(context);
+    if (missingProduct) {
+      return missingProduct;
     }
 
-    const itemSearch = extractItemSearchScore();
+    const itemSearch = extractItemSearchScore(context);
     if (itemSearch) {
       return itemSearch;
     }
 
-    const legacy = extractLegacyScore();
-    if (legacy && legacy.ok) {
-      return legacy;
-    }
-    if (legacy && legacy.code === "not_ready") {
+    const legacy = extractLegacyScore(context);
+    if (legacy && (legacy.ok || legacy.code === "not_ready")) {
       return legacy;
     }
 
-    const modern = extractModernScore();
+    const modern = extractModernScore(context);
     if (modern) {
       return modern;
     }
 
-    const ambiguousLegacy = extractLegacyScore({ allowAmbiguousMatches: true });
+    const ambiguousLegacy = extractLegacyScore(context, { allowAmbiguousMatches: true });
     if (ambiguousLegacy && ambiguousLegacy.ok) {
       return ambiguousLegacy;
     }
 
-    const hasLoadingSignals = Boolean(
-      root.querySelector(".loader, .loading, .item-review-wrap, .sakuraBlock, #pagetop")
-    );
-
-    return {
-      ok: false,
-      code: hasLoadingSignals ? "not_ready" : "parse_error",
-      message: hasLoadingSignals
-        ? "Rendered Sakura Checker score is not available yet."
-        : "Could not locate a rendered Sakura Checker score.",
-      retryable: hasLoadingSignals,
-    };
+    return buildFallbackResult(context);
   }
 
   return {

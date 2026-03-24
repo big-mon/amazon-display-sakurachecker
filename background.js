@@ -1,5 +1,4 @@
 importScripts(
-  "background/rendered-score-parser.js",
   "background/rendered-score-client.js",
   "background/api-client.js"
 );

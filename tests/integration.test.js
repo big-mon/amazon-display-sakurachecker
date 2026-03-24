@@ -1,8 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { chromium } = require("playwright");
-
-const renderedParser = require("../background/rendered-score-parser.js");
 
 const knownAsins = ["B0921THFXZ", "B095JGJCC7"];
 const retryDelaysMs = [1000, 3000];
@@ -11,6 +11,10 @@ const liveSmokeTestTimeoutMs =
   (retryDelaysMs.length + 1) * (renderTimeoutMs * 2) +
   retryDelaysMs.reduce((total, delayMs) => total + delayMs, 0) +
   10000;
+const parserScriptSource = fs.readFileSync(
+  path.join(__dirname, "..", "background", "rendered-score-parser.js"),
+  "utf8"
+);
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -43,13 +47,22 @@ function isSupportedSuffix(value) {
 }
 
 async function extractRenderedScore(page, asin) {
-  return page.evaluate(({ extractSource, asin: requestedAsin }) => {
-    const extract = Function(`return (${extractSource});`)();
-    return extract(document, requestedAsin);
-  }, {
-    extractSource: renderedParser.extractRenderedScore.toString(),
-    asin,
-  });
+  return page.evaluate(
+    ({ parserSource, asin: requestedAsin }) => {
+      if (
+        !window.RenderedScoreParser ||
+        typeof window.RenderedScoreParser.extractRenderedScore !== "function"
+      ) {
+        (0, eval)(parserSource);
+      }
+
+      return window.RenderedScoreParser.extractRenderedScore(document, requestedAsin);
+    },
+    {
+      parserSource: parserScriptSource,
+      asin,
+    }
+  );
 }
 
 async function waitForRenderedScore(page, asin) {

@@ -61,6 +61,10 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
       executeScript(details, callback) {
         executeCalls += 1;
         executeDetails.push(details);
+        if (Array.isArray(details.files)) {
+          callback([{ result: null }]);
+          return;
+        }
         callback([
           {
             result: scriptResponder(details, executeCalls),
@@ -121,7 +125,8 @@ test("fetchRenderedScore creates a temporary tab, polls, and closes it on succes
     assert.equal(stub.createCalls[0].active, false);
     assert.equal(stub.removeCalls.length, 1);
     assert.ok(stub.executeCalls >= 2);
-    assert.deepEqual(stub.executeDetails[0].args, ["B095JGJCC7"]);
+    assert.deepEqual(stub.executeDetails[0].files, ["background/rendered-score-parser.js"]);
+    assert.deepEqual(stub.executeDetails[1].args, ["B095JGJCC7"]);
   } finally {
     stub.cleanup();
   }
@@ -150,7 +155,7 @@ test("fetchRenderedScore closes the temporary tab after a render timeout", async
     assert.equal(result.ok, false);
     assert.equal(result.code, "parse_error");
     assert.equal(stub.removeCalls.length, 1);
-    assert.ok(stub.executeCalls > 1);
+    assert.ok(stub.executeCalls > 2);
   } finally {
     stub.cleanup();
   }
@@ -180,7 +185,7 @@ test("fetchRenderedScore returns terminal extraction errors without retrying for
     assert.equal(result.code, "parse_error");
     assert.equal(result.message, "Broken markup");
     assert.equal(stub.removeCalls.length, 1);
-    assert.equal(stub.executeCalls, 1);
+    assert.equal(stub.executeCalls, 2);
   } finally {
     stub.cleanup();
   }
