@@ -287,41 +287,50 @@
 
   async function submitProductUrlSearch(tabId, amazonProductUrl, timeoutMs = DEFAULT_TIMEOUT_MS) {
     const reloadPromise = waitForTabReload(tabId, timeoutMs);
-    const submissionResult = await executeTabFunction(
-      tabId,
-      (productUrl) => {
-        const input = document.querySelector("#urlsearchForm");
-        if (!input) {
-          return {
-            ok: false,
-            message: "The Sakura Checker search input is not available.",
-          };
-        }
+    const reloadDrainPromise = reloadPromise.catch(() => {});
+    let submissionResult = null;
 
-        input.value = productUrl;
-        input.setAttribute("value", productUrl);
+    try {
+      submissionResult = await executeTabFunction(
+        tabId,
+        (productUrl) => {
+          const input = document.querySelector("#urlsearchForm");
+          if (!input) {
+            return {
+              ok: false,
+              message: "The Sakura Checker search input is not available.",
+            };
+          }
 
-        if (typeof self.setactionsearchForm === "function") {
-          self.setactionsearchForm(true);
-          return { ok: true, method: "setactionsearchForm" };
-        }
+          input.value = productUrl;
+          input.setAttribute("value", productUrl);
 
-        const form = document.querySelector("#searchForm");
-        if (!form) {
-          return {
-            ok: false,
-            message: "The Sakura Checker search form is not available.",
-          };
-        }
+          if (typeof self.setactionsearchForm === "function") {
+            self.setactionsearchForm(true);
+            return { ok: true, method: "setactionsearchForm" };
+          }
 
-        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-        return { ok: true, method: "submit" };
-      },
-      [amazonProductUrl],
-      "Failed to submit the Sakura Checker URL search."
-    );
+          const form = document.querySelector("#searchForm");
+          if (!form) {
+            return {
+              ok: false,
+              message: "The Sakura Checker search form is not available.",
+            };
+          }
+
+          form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+          return { ok: true, method: "submit" };
+        },
+        [amazonProductUrl],
+        "Failed to submit the Sakura Checker URL search."
+      );
+    } catch (error) {
+      void reloadDrainPromise;
+      throw error;
+    }
 
     if (!submissionResult || submissionResult.ok !== true) {
+      void reloadDrainPromise;
       throw new Error(
         submissionResult && submissionResult.message
           ? submissionResult.message

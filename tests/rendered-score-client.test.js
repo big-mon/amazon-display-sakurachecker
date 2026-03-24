@@ -7,7 +7,12 @@ function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function installChromeStub({ completeDelayMs = 0, parserInjectionResponder, scriptResponder }) {
+function installChromeStub({
+  completeDelayMs = 0,
+  parserInjectionResponder,
+  scriptResponder,
+  simulateUrlSearchReload = true,
+}) {
   const listeners = new Set();
   const tabs = new Map();
   const createCalls = [];
@@ -78,6 +83,7 @@ function installChromeStub({ completeDelayMs = 0, parserInjectionResponder, scri
         }
         extractCalls += 1;
         if (
+          simulateUrlSearchReload &&
           Array.isArray(details.args) &&
           details.args.length === 1 &&
           typeof details.args[0] === "string" &&
@@ -327,6 +333,59 @@ test("fetchRenderedScore can trigger a Sakura Checker product URL search before 
       )
     );
   } finally {
+    stub.cleanup();
+  }
+});
+
+test("fetchRenderedScore drains the reload wait when URL search submission fails", async () => {
+  const stub = installChromeStub({
+    simulateUrlSearchReload: false,
+    scriptResponder(details) {
+      if (
+        Array.isArray(details.args) &&
+        details.args.length === 1 &&
+        typeof details.args[0] === "string" &&
+        /amazon\.co\.jp\/dp\/B0BJDY6D1W/.test(details.args[0])
+      ) {
+        return {
+          ok: false,
+          message: "The Sakura Checker search form is not available.",
+        };
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "4" }],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+  });
+  const unhandledRejections = [];
+  const onUnhandledRejection = (error) => {
+    unhandledRejections.push(error);
+  };
+  process.on("unhandledRejection", onUnhandledRejection);
+
+  try {
+    await assert.rejects(
+      renderedScoreClient.fetchRenderedScore({
+        asin: "B0BJDY6D1W",
+        sourceUrl: "https://sakura-checker.jp/search/B0BJDY6D1W/",
+        urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0BJDY6D1W",
+        timeoutMs: 25,
+        pollIntervalMs: 1,
+      }),
+      /search form is not available/
+    );
+
+    await delay(40);
+    assert.deepEqual(unhandledRejections, []);
+  } finally {
+    process.removeListener("unhandledRejection", onUnhandledRejection);
     stub.cleanup();
   }
 });
