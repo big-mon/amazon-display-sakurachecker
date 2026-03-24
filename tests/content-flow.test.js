@@ -15,6 +15,7 @@ class FakeElement {
     this.textContent = "";
     this.className = "";
     this.id = "";
+    this.listeners = new Map();
   }
 
   appendChild(child) {
@@ -83,6 +84,26 @@ class FakeElement {
     }
 
     return this.attributes.get(name) || null;
+  }
+
+  addEventListener(type, listener) {
+    const listeners = this.listeners.get(type) || [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  dispatchEvent(event) {
+    const eventObject =
+      typeof event === "string"
+        ? { type: event }
+        : event && typeof event === "object"
+          ? event
+          : { type: "" };
+    const listeners = this.listeners.get(eventObject.type) || [];
+    for (const listener of listeners) {
+      listener.call(this, eventObject);
+    }
+    return true;
   }
 
   get firstChild() {
@@ -248,6 +269,10 @@ function findImages(root) {
   return images;
 }
 
+function findFirstByTag(root, tagName) {
+  return findFirst(root, (element) => element.tagName === String(tagName).toUpperCase());
+}
+
 function findByClass(root, className) {
   return findFirst(root, (element) =>
     String(element.className || "")
@@ -255,6 +280,33 @@ function findByClass(root, className) {
       .filter(Boolean)
       .includes(className)
   );
+}
+
+function findAllByClass(root, className) {
+  const matches = [];
+  walkTree(root, (element) => {
+    if (
+      String(element.className || "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .includes(className)
+    ) {
+      matches.push(element);
+    }
+  });
+  return matches;
+}
+
+function getNodeText(node) {
+  let value = String(node.textContent || "");
+  for (const child of node.children || []) {
+    value += getNodeText(child);
+  }
+  return value;
+}
+
+function getChildNodeTexts(node) {
+  return (node.children || []).map((child) => getNodeText(child));
 }
 
 test("content.js initializes SakuraChecker immediately after document_end", () => {
@@ -382,6 +434,180 @@ test("SakuraChecker refresh shows loading first and then renders fetched score i
   assert.equal(images[2].src, "https://sakura-checker.jp/images/rv_level03.png");
 });
 
+test("SakuraChecker renders a refresh button for cached results and refetches on click", async () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const sendMessageCalls = [];
+  const chrome = {
+    runtime: {
+      sendMessage: async (payload) => {
+        sendMessageCalls.push(payload);
+
+        return {
+          ok: true,
+          cached: payload.forceRefresh !== true,
+          sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+          score: {
+            kind: "text",
+            value: payload.forceRefresh === true ? "4.70" : "4.29",
+            suffix: "/5",
+          },
+          verdict: {
+            kind: "text-verdict",
+            lines: ["安全", "サクラ度 0%"],
+          },
+        };
+      },
+    },
+  };
+  const context = createExecutionContext({ document, chrome });
+
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+  loadScript(context, "content/ui-display.js");
+  loadScript(context, "content/sakura-checker.js");
+
+  await context.window.SakuraChecker.refreshForCurrentPage();
+
+  let root = document.getElementById("sakura-checker-result");
+  let refreshButton = findFirstByTag(root, "button");
+  assert.ok(refreshButton);
+  assert.equal(sendMessageCalls.length, 1);
+  assert.equal(sendMessageCalls[0].forceRefresh, false);
+
+  await refreshButton.dispatchEvent({ type: "click" });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  root = document.getElementById("sakura-checker-result");
+  refreshButton = findFirstByTag(root, "button");
+  const scoreText = findByClass(root, "sc-score-text");
+
+  assert.equal(sendMessageCalls.length, 2);
+  assert.equal(sendMessageCalls[1].forceRefresh, true);
+  assert.ok(scoreText);
+  assert.equal(scoreText.textContent, "4.70");
+  assert.equal(refreshButton, null);
+});
+
+test("UiDisplay renders the Sakura Checker link as an icon button", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/ui-display.js");
+
+  context.window.UiDisplay.renderSuccess({
+    ok: true,
+    cached: true,
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    score: {
+      kind: "text",
+      value: "4.29",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["合格", "サクラ度 0%"],
+    },
+  });
+
+  const root = document.getElementById("sakura-checker-result");
+  const link = findFirst(root, (element) => element.tagName === "A");
+
+  assert.ok(link);
+  assert.equal(link.textContent, "🔗");
+  assert.equal(link.className, "sc-link sc-icon-link");
+  assert.equal(link.getAttribute("aria-label"), "サクラチェッカーを開く");
+  assert.equal(link.title, "サクラチェッカーを開く");
+});
+
+test("UiDisplay renders a cached-status indicator with tooltip guidance", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/ui-display.js");
+
+  context.window.UiDisplay.renderSuccess({
+    ok: true,
+    cached: true,
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    score: {
+      kind: "text",
+      value: "4.29",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["合格", "サクラ度 0%"],
+    },
+  });
+
+  const root = document.getElementById("sakura-checker-result");
+  const indicator = findByClass(root, "sc-status-indicator");
+
+  assert.ok(indicator);
+  assert.equal(indicator.textContent, "●");
+  assert.equal(indicator.dataset.statusTone, "cached");
+  assert.equal(indicator.getAttribute("aria-label"), "キャッシュから表示中");
+  assert.match(indicator.title, /緑: 取得成功した最新値/);
+  assert.match(indicator.title, /黄: キャッシュから表示した値/);
+  assert.match(indicator.title, /赤: 取得に失敗した値/);
+});
+
+test("UiDisplay places the status dot above right-aligned action buttons", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/ui-display.js");
+
+  context.window.UiDisplay.renderSuccess(
+    {
+      ok: true,
+      cached: true,
+      sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+      score: {
+        kind: "text",
+        value: "4.29",
+        suffix: "/5",
+      },
+      verdict: {
+        kind: "text-verdict",
+        lines: ["合格", "サクラ度 0%"],
+      },
+    },
+    { onRefresh: () => {} }
+  );
+
+  const root = document.getElementById("sakura-checker-result");
+  const side = findByClass(root, "sc-side");
+  const top = findByClass(side, "sc-side-top");
+  const bottom = findByClass(side, "sc-side-bottom");
+
+  assert.ok(side);
+  assert.ok(top);
+  assert.ok(bottom);
+  assert.equal(side.children[0], top);
+  assert.equal(side.children[1], bottom);
+  assert.ok(findByClass(top, "sc-status-indicator"));
+  assert.ok(findFirstByTag(bottom, "button"));
+  assert.ok(findFirst(bottom, (element) => element.tagName === "A"));
+});
+
+test("UiDisplay renders an error-status indicator in red", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/ui-display.js");
+
+  context.window.UiDisplay.renderError({
+    ok: false,
+    code: "network_error",
+    message: "Failed to fetch",
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+  });
+
+  const root = document.getElementById("sakura-checker-result");
+  const indicator = findByClass(root, "sc-status-indicator");
+
+  assert.ok(indicator);
+  assert.equal(indicator.dataset.statusTone, "error");
+  assert.equal(indicator.getAttribute("aria-label"), "取得失敗");
+});
+
 test("SakuraChecker keeps the first response when the URL changes to the same ASIN during fetch", async () => {
   const document = createPageDocument("https://www.amazon.co.jp/gp/product/B095JGJCC7");
   const sendMessageCalls = [];
@@ -467,7 +693,41 @@ test("UiDisplay renders text-based itemsearch scores", () => {
 
   const verdictText = findByClass(root, "sc-verdict-text");
   assert.ok(verdictText);
-  assert.equal(verdictText.textContent, "危険 / サクラ度 90%");
+  assert.deepEqual(getChildNodeTexts(verdictText), ["危険", "🌸 90%"]);
+});
+
+test("UiDisplay highlights score and sakura percentage with the accent color", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/ui-display.js");
+
+  context.window.UiDisplay.renderSuccess({
+    ok: true,
+    cached: true,
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    score: {
+      kind: "text",
+      value: "4.29",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["合格", "サクラ度 0%"],
+    },
+  });
+
+  const root = document.getElementById("sakura-checker-result");
+  const style = document.getElementById("sakura-checker-style");
+  const accentNodes = findAllByClass(root, "sc-accent");
+  const verdictText = findByClass(root, "sc-verdict-text");
+
+  assert.ok(style);
+  assert.match(style.textContent, /\.sc-score-text\s*\{[\s\S]*color: #e5374f;/);
+  assert.match(style.textContent, /\.sc-accent\s*\{[\s\S]*color: #e5374f;/);
+  assert.equal(accentNodes.length, 1);
+  assert.equal(accentNodes[0].textContent, "0%");
+  assert.ok(verdictText);
+  assert.deepEqual(getChildNodeTexts(verdictText), ["合格", "🌸 0%"]);
 });
 
 test("SakuraChecker does not render or fetch on non-product pages that contain search-result ASINs", async () => {

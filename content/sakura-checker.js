@@ -4,6 +4,7 @@
       this.currentAsin = null;
       this.inFlight = false;
       this.pendingRefresh = false;
+      this.pendingForceRefresh = false;
     }
 
     init() {
@@ -19,7 +20,7 @@
       return window.AsinExtractor.extractProductASIN();
     }
 
-    async refreshForCurrentPage() {
+    async refreshForCurrentPage({ forceRefresh = false } = {}) {
       if (!window.AsinExtractor || !window.UiDisplay) {
         return;
       }
@@ -29,17 +30,20 @@
         window.UiDisplay.remove();
         this.currentAsin = null;
         this.pendingRefresh = false;
+        this.pendingForceRefresh = false;
         return;
       }
 
       if (this.inFlight) {
         this.pendingRefresh = true;
+        this.pendingForceRefresh = this.pendingForceRefresh || forceRefresh;
         return;
       }
 
       this.currentAsin = asin;
       this.inFlight = true;
       this.pendingRefresh = false;
+      this.pendingForceRefresh = false;
       window.UiDisplay.renderLoading(`https://sakura-checker.jp/search/${asin}/`);
       let latestAsin = asin;
 
@@ -47,6 +51,7 @@
         const response = await chrome.runtime.sendMessage({
           action: "checkSakuraScore",
           asin,
+          forceRefresh,
         });
 
         latestAsin = this.getCurrentPageAsin();
@@ -55,7 +60,14 @@
         }
 
         if (response && response.ok) {
-          window.UiDisplay.renderSuccess(response);
+          window.UiDisplay.renderSuccess(response, {
+            onRefresh:
+              response.cached
+                ? () => {
+                    this.refreshForCurrentPage({ forceRefresh: true });
+                  }
+                : null,
+          });
         } else {
           window.UiDisplay.renderError(response);
         }
@@ -78,12 +90,14 @@
         );
       } finally {
         this.inFlight = false;
+        const pendingForceRefresh = this.pendingForceRefresh;
         const shouldRetry =
           this.pendingRefresh &&
           (latestAsin !== asin || !document.getElementById("sakura-checker-result"));
         this.pendingRefresh = false;
+        this.pendingForceRefresh = false;
         if (shouldRetry) {
-          this.refreshForCurrentPage();
+          this.refreshForCurrentPage({ forceRefresh: pendingForceRefresh });
         }
       }
     }
