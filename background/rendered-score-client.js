@@ -129,6 +129,26 @@
     });
   }
 
+  async function injectParserWithRetry(tabId, options = {}) {
+    const timeoutMs = Number(options.timeoutMs || DEFAULT_TIMEOUT_MS);
+    const pollIntervalMs = Number(options.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS);
+    const startedAt = Date.now();
+    let lastError = null;
+
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        await injectParser(tabId);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+
+      await delay(pollIntervalMs);
+    }
+
+    throw lastError || new Error("Timed out preparing the Sakura Checker parser.");
+  }
+
   function executeExtract(tabId, asin) {
     return new Promise((resolve, reject) => {
       if (
@@ -299,7 +319,10 @@
       });
 
       await waitForTabComplete(tab.id, timeoutMs);
-      await injectParser(tab.id);
+      await injectParserWithRetry(tab.id, {
+        timeoutMs,
+        pollIntervalMs,
+      });
       return await pollExtractedScore(tab.id, {
         asin,
         timeoutMs,

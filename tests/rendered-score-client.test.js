@@ -7,13 +7,14 @@ function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
+function installChromeStub({ completeDelayMs = 0, parserInjectionResponder, scriptResponder }) {
   const listeners = new Set();
   const tabs = new Map();
   const createCalls = [];
   const removeCalls = [];
   let nextTabId = 1;
   let executeCalls = 0;
+  let parserInjectionCalls = 0;
   let extractCalls = 0;
   const executeDetails = [];
 
@@ -63,7 +64,16 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
         executeCalls += 1;
         executeDetails.push(details);
         if (Array.isArray(details.files)) {
+          parserInjectionCalls += 1;
+          const injectionErrorMessage =
+            typeof parserInjectionResponder === "function"
+              ? parserInjectionResponder(details, parserInjectionCalls)
+              : null;
+          global.chrome.runtime.lastError = injectionErrorMessage
+            ? { message: injectionErrorMessage }
+            : null;
           callback([{ result: null }]);
+          global.chrome.runtime.lastError = null;
           return;
         }
         extractCalls += 1;
@@ -84,6 +94,9 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
     },
     get extractCalls() {
       return extractCalls;
+    },
+    get parserInjectionCalls() {
+      return parserInjectionCalls;
     },
     executeDetails,
     cleanup() {
@@ -132,6 +145,44 @@ test("fetchRenderedScore creates a temporary tab, polls, and closes it on succes
     assert.ok(stub.extractCalls >= 2);
     assert.deepEqual(stub.executeDetails[0].files, ["background/rendered-score-parser.js"]);
     assert.deepEqual(stub.executeDetails[1].args, ["B095JGJCC7"]);
+  } finally {
+    stub.cleanup();
+  }
+});
+
+test("fetchRenderedScore retries transient parser injection failures before polling", async () => {
+  const stub = installChromeStub({
+    parserInjectionResponder(_details, callCount) {
+      if (callCount === 1) {
+        return "The tab is still navigating.";
+      }
+
+      return null;
+    },
+    scriptResponder() {
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "4" }],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+  });
+
+  try {
+    const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B095JGJCC7",
+      sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+      timeoutMs: 200,
+      pollIntervalMs: 1,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(stub.parserInjectionCalls, 2);
+    assert.equal(stub.extractCalls, 1);
   } finally {
     stub.cleanup();
   }
