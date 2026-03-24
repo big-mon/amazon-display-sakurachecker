@@ -78,6 +78,14 @@
       return location.pathname;
     }
 
+    try {
+      if (context.root.baseURI) {
+        return new URL(context.root.baseURI).pathname;
+      }
+    } catch {
+      // Ignore baseURI parsing issues and fall back.
+    }
+
     return "";
   }
 
@@ -552,6 +560,30 @@
     return null;
   }
 
+  function detectUrlSearchRequired(context) {
+    if (!/\/itemsearch\/?/i.test(currentPathname(context))) {
+      return null;
+    }
+
+    const bodyText = normalizeText(
+      (context.root.body && context.root.body.textContent) || context.root.textContent || ""
+    );
+
+    if (
+      bodyText.includes("商品名検索では商品が見つかりませんでした。") &&
+      bodyText.includes("アマゾン製品URLでのURL検索をお試し下さい。") &&
+      bodyText.includes("URLでは必ず検出できます。")
+    ) {
+      return createFailure(
+        "url_search_required",
+        "Sakura Checker asked for an Amazon product URL search.",
+        false
+      );
+    }
+
+    return null;
+  }
+
   function buildFallbackResult(context) {
     const hasLoadingSignals = Boolean(
       context.root.querySelector(".loader, .loading, .item-review-wrap, .sakuraBlock, #pagetop")
@@ -589,6 +621,11 @@
     const itemSearch = extractItemSearchScore(context);
     if (itemSearch) {
       return itemSearch;
+    }
+
+    const urlSearchRequired = detectUrlSearchRequired(context);
+    if (urlSearchRequired) {
+      return urlSearchRequired;
     }
 
     const legacy = extractLegacyScore(context);

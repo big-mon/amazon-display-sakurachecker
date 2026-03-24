@@ -198,6 +198,169 @@
     });
   }
 
+  function executeTabFunction(tabId, func, args = [], defaultMessage = "Failed to run a script.") {
+    return new Promise((resolve, reject) => {
+      if (
+        typeof chrome === "undefined" ||
+        !chrome.scripting ||
+        typeof chrome.scripting.executeScript !== "function"
+      ) {
+        reject(new Error("chrome.scripting.executeScript is not available."));
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId },
+          func,
+          args,
+        },
+        (injectionResults) => {
+          if (
+            typeof chrome !== "undefined" &&
+            chrome.runtime &&
+            chrome.runtime.lastError
+          ) {
+            reject(createChromeError(defaultMessage));
+            return;
+          }
+
+          const firstResult = Array.isArray(injectionResults) ? injectionResults[0] : null;
+          resolve(firstResult ? firstResult.result : null);
+        }
+      );
+    });
+  }
+
+  function waitForTabReload(tabId, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    let cleanup = () => {};
+
+    const promise = new Promise((resolve, reject) => {
+      if (
+        typeof chrome === "undefined" ||
+        !chrome.tabs ||
+        !chrome.tabs.onUpdated ||
+        typeof chrome.tabs.onUpdated.addListener !== "function"
+      ) {
+        reject(new Error("chrome.tabs.onUpdated is not available."));
+        return;
+      }
+
+      let settled = false;
+      let sawLoading = false;
+      let timeoutId = null;
+
+      cleanup = () => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
+        chrome.tabs.onUpdated.removeListener(handleUpdated);
+      }
+
+      function handleUpdated(updatedTabId, changeInfo, tab) {
+        if (updatedTabId !== tabId) {
+          return;
+        }
+
+        if (changeInfo.status === "loading") {
+          sawLoading = true;
+          return;
+        }
+
+        if (sawLoading && (changeInfo.status === "complete" || (tab && tab.status === "complete"))) {
+          cleanup();
+          resolve(tab || { id: tabId, status: "complete" });
+        }
+      }
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("Timed out waiting for the Sakura Checker page to reload."));
+      }, timeoutMs);
+
+      chrome.tabs.onUpdated.addListener(handleUpdated);
+    });
+
+    return {
+      promise,
+      cancel() {
+        cleanup();
+      },
+    };
+  }
+
+  async function submitProductUrlSearch(tabId, amazonProductUrl, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const reloadHandle = waitForTabReload(tabId, timeoutMs);
+    let submissionResult = null;
+
+    try {
+      submissionResult = await executeTabFunction(
+        tabId,
+        (productUrl) => {
+          const input = document.querySelector("#urlsearchForm");
+          if (!input) {
+            return {
+              ok: false,
+              message: "The Sakura Checker search input is not available.",
+            };
+          }
+
+          input.value = productUrl;
+          input.setAttribute("value", productUrl);
+
+          if (typeof self.setactionsearchForm === "function") {
+            self.setactionsearchForm(true);
+            return { ok: true, method: "setactionsearchForm" };
+          }
+
+          const form = document.querySelector("#searchForm");
+          if (!form) {
+            return {
+              ok: false,
+              message: "The Sakura Checker search form is not available.",
+            };
+          }
+
+          if (typeof form.requestSubmit === "function") {
+            form.requestSubmit();
+            return { ok: true, method: "requestSubmit" };
+          }
+
+          if (typeof form.submit === "function") {
+            form.submit();
+            return { ok: true, method: "submit" };
+          }
+
+          return {
+            ok: false,
+            message: "The Sakura Checker search form could not be submitted.",
+          };
+        },
+        [amazonProductUrl],
+        "Failed to submit the Sakura Checker URL search."
+      );
+    } catch (error) {
+      reloadHandle.cancel();
+      throw error;
+    }
+
+    if (!submissionResult || submissionResult.ok !== true) {
+      reloadHandle.cancel();
+      throw new Error(
+        submissionResult && submissionResult.message
+          ? submissionResult.message
+          : "Could not submit the Sakura Checker URL search."
+      );
+    }
+
+    await reloadHandle.promise;
+  }
+
   function waitForTabComplete(tabId, timeoutMs = DEFAULT_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
       if (
@@ -309,7 +472,13 @@
     };
   }
 
-  async function fetchRenderedScore({ asin, sourceUrl, timeoutMs, pollIntervalMs }) {
+  async function fetchRenderedScore({
+    asin,
+    sourceUrl,
+    timeoutMs,
+    pollIntervalMs,
+    urlSearchProductUrl,
+  }) {
     let tab = null;
 
     try {
@@ -319,6 +488,9 @@
       });
 
       await waitForTabComplete(tab.id, timeoutMs);
+      if (typeof urlSearchProductUrl === "string" && urlSearchProductUrl.trim()) {
+        await submitProductUrlSearch(tab.id, urlSearchProductUrl, timeoutMs);
+      }
       await injectParserWithRetry(tab.id, {
         timeoutMs,
         pollIntervalMs,
