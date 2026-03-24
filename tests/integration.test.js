@@ -38,6 +38,10 @@ function formatFailure(asin, result, error) {
   return parts.join(" ");
 }
 
+function isSupportedSuffix(value) {
+  return value === "/5" || value === "%";
+}
+
 async function extractRenderedScore(page, asin) {
   return page.evaluate(({ extractSource, asin: requestedAsin }) => {
     const extract = Function(`return (${extractSource});`)();
@@ -100,7 +104,7 @@ async function runLiveSmokeWithRetry(asin) {
 
       assert.equal(result.ok, true, formatFailure(asin, result));
       assert.equal(result.score.kind, "visual-image", formatFailure(asin, result));
-      assert.equal(result.score.suffix, "/5", formatFailure(asin, result));
+      assert.equal(isSupportedSuffix(result.score.suffix), true, formatFailure(asin, result));
       assert.ok(result.score.images.length >= 1, formatFailure(asin, result));
 
       for (const image of result.score.images) {
@@ -125,7 +129,7 @@ async function runLiveSmokeWithRetry(asin) {
 }
 
 for (const asin of knownAsins) {
-  test(`live smoke returns rendered /5 score images for ${asin}`, { timeout: liveSmokeTestTimeoutMs }, async () => {
+  test(`live smoke returns rendered score images for ${asin}`, { timeout: liveSmokeTestTimeoutMs }, async () => {
     await runLiveSmokeWithRetry(asin);
   });
 }

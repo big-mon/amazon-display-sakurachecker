@@ -107,6 +107,20 @@
         .filter(Boolean);
     }
 
+    function createTextVerdict(lines) {
+      const normalizedLines = Array.isArray(lines)
+        ? lines.map(normalizeText).filter(Boolean)
+        : [];
+      if (!normalizedLines.length) {
+        return null;
+      }
+
+      return {
+        kind: "text-verdict",
+        lines: normalizedLines,
+      };
+    }
+
     function buildRequestedAsinPattern() {
       if (!requestedAsin) {
         return null;
@@ -130,35 +144,38 @@
       );
     }
 
-    function anchorContainsAnyAsin(anchor) {
-      if (!anchor) {
-        return false;
+    function getDirectChildItemInfos(reviewWrap) {
+      if (!reviewWrap || !reviewWrap.children) {
+        return [];
       }
 
-      return /(?:\/dp\/|\/gp\/product\/|\/search\/)[A-Z0-9]{10}/i.test(
-        String(anchor.getAttribute("href") || anchor.href || "")
+      return Array.from(reviewWrap.children).filter(
+        (child) =>
+          child &&
+          typeof child.matches === "function" &&
+          child.matches(".item-info")
       );
     }
 
-    function matchesRequestedAsin(itemInfo) {
+    function reviewWrapMatchesRequestedAsin(reviewWrap) {
+      if (!requestedAsinPattern || !reviewWrap) {
+        return false;
+      }
+
+      return Array.from(reviewWrap.querySelectorAll("a[href]")).some(anchorMatchesRequestedAsin);
+    }
+
+    function hasExactRequestedAsinMatch(itemInfo) {
       if (!requestedAsin) {
-        return true;
+        return false;
       }
 
       const ownAnchors = Array.from(itemInfo.querySelectorAll("a[href]"));
       if (ownAnchors.some(anchorMatchesRequestedAsin)) {
         return true;
       }
-      if (ownAnchors.some(anchorContainsAnyAsin)) {
-        return false;
-      }
 
-      const reviewWrap = itemInfo.closest(".item-review-wrap");
-      if (!reviewWrap) {
-        return false;
-      }
-
-      return Array.from(reviewWrap.querySelectorAll("a[href]")).some(anchorMatchesRequestedAsin);
+      return String(itemInfo.outerHTML || "").includes(requestedAsin);
     }
 
     function hasPendingRequestedLegacyCard() {
@@ -232,7 +249,8 @@
       };
     }
 
-    function extractLegacyScore() {
+    function extractLegacyScore(options = {}) {
+      const allowAmbiguousMatches = Boolean(options.allowAmbiguousMatches);
       const seen = new Set();
       const candidates = Array.from(
         root.querySelectorAll(".item-review-wrap .item-info, .item-info")
@@ -244,8 +262,42 @@
         return true;
       });
 
-      const matchingCandidates = candidates.filter(matchesRequestedAsin);
-      const scopedCandidates = requestedAsin ? matchingCandidates : candidates;
+      let scopedCandidates = candidates;
+      let matchingCandidates = candidates;
+
+      if (requestedAsin) {
+        const matchingWraps = Array.from(root.querySelectorAll(".item-review-wrap")).filter(
+          reviewWrapMatchesRequestedAsin
+        );
+
+        const exactCandidates = matchingWraps.flatMap((reviewWrap) =>
+          getDirectChildItemInfos(reviewWrap).filter(hasExactRequestedAsinMatch)
+        );
+
+        if (exactCandidates.length) {
+          matchingCandidates = exactCandidates;
+          scopedCandidates = exactCandidates;
+        } else {
+          const ambiguousWrapCandidates = matchingWraps.flatMap((reviewWrap) =>
+            getDirectChildItemInfos(reviewWrap)
+          );
+          const singleCardWrapCandidates = matchingWraps
+            .map((reviewWrap) => getDirectChildItemInfos(reviewWrap))
+            .filter((itemInfos) => itemInfos.length === 1)
+            .map((itemInfos) => itemInfos[0]);
+
+          if (singleCardWrapCandidates.length) {
+            matchingCandidates = singleCardWrapCandidates;
+            scopedCandidates = singleCardWrapCandidates;
+          } else if (allowAmbiguousMatches && ambiguousWrapCandidates.length) {
+            matchingCandidates = ambiguousWrapCandidates;
+            scopedCandidates = ambiguousWrapCandidates;
+          } else {
+            matchingCandidates = [];
+            scopedCandidates = [];
+          }
+        }
+      }
 
       const bestCandidate = scopedCandidates
         .map(getLegacyCandidateData)
@@ -279,6 +331,60 @@
         ok: true,
         score: bestCandidate.scorePayload,
         verdict: bestCandidate.verdict,
+      };
+    }
+
+    function extractItemSearchScore() {
+      const candidates = Array.from(root.querySelectorAll('[name="searchitem"]'));
+      if (!candidates.length) {
+        return null;
+      }
+
+      const matchingCandidate = candidates.find((candidate) => {
+        if (!requestedAsinPattern) {
+          return true;
+        }
+
+        return Array.from(candidate.querySelectorAll("a[href]")).some(anchorMatchesRequestedAsin);
+      });
+
+      if (!matchingCandidate) {
+        return null;
+      }
+
+      const scoreNode = matchingCandidate.querySelector(".item-info .item-rating, .item-rating");
+      const scoreText = normalizeText((scoreNode || {}).textContent || "");
+      const scoreMatch = scoreText.match(/([0-9]+(?:\.[0-9]+)?)\s*\/\s*5/i);
+      if (!scoreMatch) {
+        return null;
+      }
+
+      const sakuraPercentText = normalizeText(
+        (
+          matchingCandidate.querySelector(".item-info .item-sakura .is-size-7, .item-sakura .is-size-7") ||
+          {}
+        ).textContent || ""
+      );
+      const levelText = normalizeText(
+        (matchingCandidate.querySelector(".item-info .item-lv, .item-lv") || {}).textContent || ""
+      );
+
+      const verdictLines = [];
+      if (levelText) {
+        verdictLines.push(levelText);
+      }
+      if (sakuraPercentText) {
+        verdictLines.push(`サクラ度 ${sakuraPercentText}`);
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "text",
+          value: scoreMatch[1],
+          suffix: "/5",
+        },
+        verdict: createTextVerdict(verdictLines),
       };
     }
 
@@ -406,6 +512,11 @@
       };
     }
 
+    const itemSearch = extractItemSearchScore();
+    if (itemSearch) {
+      return itemSearch;
+    }
+
     const legacy = extractLegacyScore();
     if (legacy && legacy.ok) {
       return legacy;
@@ -417,6 +528,11 @@
     const modern = extractModernScore();
     if (modern) {
       return modern;
+    }
+
+    const ambiguousLegacy = extractLegacyScore({ allowAmbiguousMatches: true });
+    if (ambiguousLegacy && ambiguousLegacy.ok) {
+      return ambiguousLegacy;
     }
 
     const hasLoadingSignals = Boolean(

@@ -70,6 +70,13 @@
         display: block;
       }
 
+      #${ROOT_ID} .sc-score-text {
+        font-size: 28px;
+        line-height: 1;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
       #${ROOT_ID} .sc-suffix {
         font-size: 18px;
         font-weight: 700;
@@ -87,6 +94,13 @@
         max-height: 32px;
         width: auto;
         display: block;
+      }
+
+      #${ROOT_ID} .sc-verdict-text {
+        font-size: 13px;
+        font-weight: 700;
+        color: #565959;
+        white-space: nowrap;
       }
 
       #${ROOT_ID} .sc-status-value {
@@ -197,17 +211,26 @@
   }
 
   function createVerdictNode(verdict) {
-    if (!verdict || !verdict.image) {
+    if (!verdict || (!verdict.image && (!verdict.lines || !verdict.lines.length))) {
       return null;
     }
 
     const verdictNode = document.createElement("div");
     verdictNode.className = "sc-verdict";
 
-    const icon = document.createElement("img");
-    icon.src = verdict.image.src;
-    icon.alt = verdict.image.alt || "サクラチェッカーの判定";
-    verdictNode.appendChild(icon);
+    if (verdict.image) {
+      const icon = document.createElement("img");
+      icon.src = verdict.image.src;
+      icon.alt = verdict.image.alt || "サクラチェッカーの判定";
+      verdictNode.appendChild(icon);
+    }
+
+    if (Array.isArray(verdict.lines) && verdict.lines.length) {
+      const text = document.createElement("span");
+      text.className = "sc-verdict-text";
+      text.textContent = verdict.lines.join(" / ");
+      verdictNode.appendChild(text);
+    }
 
     return verdictNode;
   }
@@ -218,6 +241,25 @@
 
     if (!score) {
       value.textContent = "-";
+      return value;
+    }
+
+    if (score.kind === "text") {
+      const scoreText = document.createElement("span");
+      scoreText.className = "sc-score-text";
+      scoreText.textContent = score.value;
+      value.appendChild(scoreText);
+
+      const suffix = document.createElement("span");
+      suffix.className = "sc-suffix";
+      suffix.textContent = score.suffix;
+      value.appendChild(suffix);
+
+      const textVerdict = createVerdictNode(verdict);
+      if (textVerdict) {
+        value.appendChild(textVerdict);
+      }
+
       return value;
     }
 

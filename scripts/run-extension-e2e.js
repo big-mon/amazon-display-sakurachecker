@@ -49,6 +49,14 @@ const SETTLE_TIMEOUT_MS = Number(process.env.SAKURA_E2E_TIMEOUT_MS || 45000);
 const EXPECTED_SUFFIX = process.env.SAKURA_E2E_EXPECT_SUFFIX || "/5";
 const HEADLESS = process.env.PW_EXTENSION_HEADLESS !== "0";
 
+function encodeItemSearchWord(value) {
+  return Buffer.from(String(value || ""), "utf8").toString("base64");
+}
+
+function isSupportedSuffix(value) {
+  return value === "/5" || value === "%";
+}
+
 function ensureOutputDir() {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
@@ -87,6 +95,8 @@ async function collectPanelState(page) {
       alt: image.getAttribute("alt") || "",
     }));
     const verdictImageNode = root.querySelector(".sc-verdict img");
+    const verdictTextNode = root.querySelector(".sc-verdict-text");
+    const scoreTextNode = root.querySelector(".sc-score-text");
     const suffixNode = root.querySelector(".sc-suffix");
 
     return {
@@ -95,6 +105,7 @@ async function collectPanelState(page) {
       linkHref: link ? link.href : null,
       scoreImageCount: scoreImages.length,
       scoreImages,
+      scoreText: scoreTextNode ? scoreTextNode.textContent || "" : "",
       scoreSuffix: suffixNode ? suffixNode.textContent || "" : "",
       verdictImage: verdictImageNode
         ? {
@@ -102,6 +113,7 @@ async function collectPanelState(page) {
             alt: verdictImageNode.getAttribute("alt") || "",
           }
         : null,
+      verdictText: verdictTextNode ? verdictTextNode.textContent || "" : "",
       url: location.href,
       title: document.title,
     };
@@ -148,10 +160,14 @@ async function run() {
     if (!panel.linkHref || !panel.linkHref.includes(expectedLink)) {
       throw new Error(`Unexpected panel link: ${panel.linkHref || "<missing>"}`);
     }
-    if (panel.scoreImageCount < 1) {
-      throw new Error("The Sakura Checker panel did not render any score images.");
+    if (panel.scoreImageCount < 1 && !panel.scoreText) {
+      throw new Error("The Sakura Checker panel did not render a score.");
     }
-    if (panel.scoreSuffix !== EXPECTED_SUFFIX) {
+    if (process.env.SAKURA_E2E_EXPECT_SUFFIX) {
+      if (panel.scoreSuffix !== EXPECTED_SUFFIX) {
+        throw new Error(`Unexpected score suffix: ${panel.scoreSuffix || "<missing>"}`);
+      }
+    } else if (!isSupportedSuffix(panel.scoreSuffix)) {
       throw new Error(`Unexpected score suffix: ${panel.scoreSuffix || "<missing>"}`);
     }
 

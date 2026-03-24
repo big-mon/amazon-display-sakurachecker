@@ -28,6 +28,20 @@ test("extractRenderedScore reads the legacy /5 product card with verdict", () =>
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level03.png");
 });
 
+test("extractRenderedScore reads the itemsearch row for the requested ASIN", () => {
+  const document = parseDocument(
+    fixtures.itemSearchResultHtml,
+    "https://sakura-checker.jp/itemsearch/?word=QjA5MUJHTUtZUw=="
+  );
+  const result = renderedParser.extractRenderedScore(document, "B091BGMKYS");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "text");
+  assert.equal(result.score.value, "1.93");
+  assert.equal(result.score.suffix, "/5");
+  assert.deepEqual(result.verdict.lines, ["危険", "サクラ度 90%"]);
+});
+
 test("extractRenderedScore prefers the richest rendered product card", () => {
   const document = parseDocument(fixtures.comparisonHeavyProductHtml);
   const result = renderedParser.extractRenderedScore(document);
@@ -70,7 +84,7 @@ test("extractRenderedScore does not treat sibling cards as ASIN matches via the 
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level03.png");
 });
 
-test("extractRenderedScore prefers the highest-review legacy card when wrapper-scoped siblings tie structurally", () => {
+test("extractRenderedScore preserves the best legacy card when wrapper-scoped siblings are ambiguous and no modern summary exists", () => {
   const document = parseDocument(fixtures.sameWrapReviewCountTiebreakHtml);
   const result = renderedParser.extractRenderedScore(document, "B095JGJCC7");
 
@@ -82,6 +96,17 @@ test("extractRenderedScore prefers the highest-review legacy card when wrapper-s
   );
   assert.ok(result.verdict);
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level01.png");
+});
+
+test("extractRenderedScore falls back to the modern summary when wrapper-scoped legacy siblings are ambiguous", () => {
+  const document = parseDocument(fixtures.ambiguousWrapperWithModernHtml);
+  const result = renderedParser.extractRenderedScore(document, "B095JGJCC7");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.suffix, "%");
+  assert.equal(result.score.images.length, 1);
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/sakura_lv00.png");
 });
 
 test("extractRenderedScore waits when only unrelated legacy cards are rendered for the requested ASIN", () => {

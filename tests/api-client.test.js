@@ -37,8 +37,20 @@ test("buildSourceUrl creates the Sakura Checker search URL", () => {
   apiClient.__resetForTests();
   assert.equal(
     apiClient.buildSourceUrl("B08N5WRWNW"),
+    "https://sakura-checker.jp/itemsearch/?word=QjA4TjVXUldOVw=="
+  );
+});
+
+test("buildDetailUrl creates the Sakura Checker detail URL", () => {
+  apiClient.__resetForTests();
+  assert.equal(
+    apiClient.buildDetailUrl("B08N5WRWNW"),
     "https://sakura-checker.jp/search/B08N5WRWNW/"
   );
+});
+
+test("encodeItemSearchWord base64-encodes the ASIN", () => {
+  assert.equal(apiClient.encodeItemSearchWord("B091BGMKYS"), "QjA5MUJHTUtZUw==");
 });
 
 test("checkSakuraScore caches successful rendered responses", async () => {
@@ -84,6 +96,7 @@ test("checkSakuraScore caches successful rendered responses", async () => {
 
     assert.equal(first.ok, true);
     assert.equal(first.cached, false);
+    assert.equal(first.sourceUrl, "https://sakura-checker.jp/search/B08N5WRWNW/");
     assert.deepEqual(first.verdict, {
       kind: "visual-verdict",
       image: {
@@ -111,7 +124,7 @@ test("checkSakuraScore ignores malformed cached successes and refetches", async 
     await apiClient.writeCache("B08N5WRWNW", {
       ok: true,
       fetchedAt: new Date().toISOString(),
-      sourceUrl: "https://sakura-checker.jp/search/B08N5WRWNW/",
+      sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjA4TjVXUldOVw==",
       score: null,
       verdict: null,
     });
@@ -182,6 +195,33 @@ test("checkSakuraScore rejects successful responses that do not include a usable
 
   assert.equal(result.ok, false);
   assert.equal(result.code, "parse_error");
+});
+
+test("checkSakuraScore accepts text-based itemsearch scores", async () => {
+  apiClient.__resetForTests();
+  const result = await apiClient.checkSakuraScore({
+    asin: "B091BGMKYS",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async () => ({
+      ok: true,
+      score: {
+        kind: "text",
+        value: "1.93",
+        suffix: "/5",
+      },
+      verdict: {
+        kind: "text-verdict",
+        lines: ["危険", "サクラ度 90%"],
+      },
+    }),
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "text");
+  assert.equal(result.score.value, "1.93");
+  assert.equal(result.sourceUrl, "https://sakura-checker.jp/search/B091BGMKYS/");
 });
 
 test("checkSakuraScore returns not_found when the product is missing", async () => {

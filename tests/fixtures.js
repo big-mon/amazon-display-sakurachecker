@@ -444,6 +444,25 @@ const fixedRenderedModernWithUnrelatedLegacyHtml = `
   </html>
 `;
 
+const ambiguousWrapperWithModernHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B095JGJCC7/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${lowCountLegacyItemInfo}
+        ${highCountLegacyItemInfo}
+      </div>
+      <div class="sakuraBlock">
+        ${modernSakuraAlertMarkup}
+        ${modernSakuraRatingMarkup}
+      </div>
+    </body>
+  </html>
+`;
+
 const modernInjectedHtml = `
   <!DOCTYPE html>
   <html lang="ja">
@@ -520,6 +539,35 @@ const renderedBlockedHtml = `
   </html>
 `;
 
+const itemSearchResultHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="list-wrap marginsideless-sp">
+        <div name="searchitem" sakura="90">
+          <div class="is-flex list-box">
+            <div class="list-item-image">
+              <a href="https://www.amazon.co.jp/dp/B091BGMKYS?tag=sakurachecker-22&linkCode=osi&th=1&psc=1" target="_blank" class="linkimg"></a>
+            </div>
+            <div class="list-info">
+              <p class="item-name">
+                UGREEN Nexode 65W
+                <a href="https://www.amazon.co.jp/dp/B091BGMKYS?tag=sakurachecker-22&linkCode=osi&th=1&psc=1" rel="nofollow" target="_blank">...</a>
+              </p>
+              <p class="item-info">
+                <span class="item-rating"><span>1.93</span>/5</span>
+                <span class="item-rvnum">(7844件)</span>
+                <span class="item-sakura">サクラ度<span class="is-size-7">90%</span></span>
+                <span class="item-lv item-lv04">危険</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </body>
+  </html>
+`;
+
 const productAndModernHtml = sampleHtml.replace(
   "</body>",
   `
@@ -544,10 +592,12 @@ const productAndModernHtml = sampleHtml.replace(
 );
 
 module.exports = {
+  ambiguousWrapperWithModernHtml,
   comparisonHeavyProductHtml,
   comparisonPrimaryItemInfo,
   comparisonSecondaryItemInfo,
   htmlWithInjectedScore,
+  itemSearchResultHtml,
   injectedDecodedScript,
   injectedPayload,
   injectedScoreMarkup,
