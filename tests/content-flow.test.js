@@ -205,6 +205,7 @@ function createPageDocument(url) {
 }
 
 function createExecutionContext({ document, chrome } = {}) {
+  const mutationObservers = [];
   const context = {
     console,
     document: document || createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7"),
@@ -212,6 +213,7 @@ function createExecutionContext({ document, chrome } = {}) {
     MutationObserver: class {
       constructor(callback) {
         this.callback = callback;
+        mutationObservers.push(this);
       }
 
       observe() {}
@@ -225,6 +227,7 @@ function createExecutionContext({ document, chrome } = {}) {
   context.self = context;
   context.location = context.document.location;
   context.globalThis = context;
+  context.__mutationObservers = mutationObservers;
 
   return vm.createContext(context);
 }
@@ -377,6 +380,61 @@ test("SakuraChecker refresh shows loading first and then renders fetched score i
   assert.equal(images[0].src, "data:image/png;base64,AAA");
   assert.equal(images[1].src, "data:image/png;base64,BBB");
   assert.equal(images[2].src, "https://sakura-checker.jp/images/rv_level03.png");
+});
+
+test("SakuraChecker keeps the first response when the URL changes to the same ASIN during fetch", async () => {
+  const document = createPageDocument("https://www.amazon.co.jp/gp/product/B095JGJCC7");
+  const sendMessageCalls = [];
+  let resolveResponse = null;
+  const chrome = {
+    runtime: {
+      sendMessage: async (payload) =>
+        new Promise((resolve) => {
+          sendMessageCalls.push(payload);
+          resolveResponse = resolve;
+        }),
+    },
+  };
+  const context = createExecutionContext({ document, chrome });
+
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+  loadScript(context, "content/ui-display.js");
+  loadScript(context, "content/sakura-checker.js");
+
+  context.window.SakuraChecker.observePageChanges();
+  const refreshPromise = context.window.SakuraChecker.refreshForCurrentPage();
+
+  context.document.location = new URL("https://www.amazon.co.jp/dp/B095JGJCC7?th=1");
+  context.window.location = context.document.location;
+  context.location = context.document.location;
+  context.__mutationObservers[0].callback();
+
+  resolveResponse({
+    ok: true,
+    cached: false,
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    score: {
+      kind: "text",
+      value: "4.29",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["合格", "サクラ度 0%"],
+    },
+  });
+
+  await refreshPromise;
+
+  const root = document.getElementById("sakura-checker-result");
+  assert.ok(root);
+  assert.equal(root.dataset.state, "success");
+  assert.equal(sendMessageCalls.length, 1);
+
+  const scoreText = findByClass(root, "sc-score-text");
+  assert.ok(scoreText);
+  assert.equal(scoreText.textContent, "4.29");
 });
 
 test("UiDisplay renders text-based itemsearch scores", () => {

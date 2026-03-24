@@ -3,6 +3,7 @@
     constructor() {
       this.currentAsin = null;
       this.inFlight = false;
+      this.pendingRefresh = false;
     }
 
     init() {
@@ -10,29 +11,37 @@
       this.observePageChanges();
     }
 
+    getCurrentPageAsin() {
+      if (!window.AsinExtractor || !window.AsinExtractor.isProductPage()) {
+        return null;
+      }
+
+      return window.AsinExtractor.extractProductASIN();
+    }
+
     async refreshForCurrentPage() {
       if (!window.AsinExtractor || !window.UiDisplay) {
         return;
       }
 
-      if (!window.AsinExtractor.isProductPage()) {
+      const asin = this.getCurrentPageAsin();
+      if (!asin) {
         window.UiDisplay.remove();
         this.currentAsin = null;
+        this.pendingRefresh = false;
         return;
       }
 
-      const asin = window.AsinExtractor.extractProductASIN();
-      if (!asin || this.inFlight) {
-        if (!asin) {
-          window.UiDisplay.remove();
-          this.currentAsin = null;
-        }
+      if (this.inFlight) {
+        this.pendingRefresh = true;
         return;
       }
 
       this.currentAsin = asin;
       this.inFlight = true;
+      this.pendingRefresh = false;
       window.UiDisplay.renderLoading(`https://sakura-checker.jp/search/${asin}/`);
+      let latestAsin = asin;
 
       try {
         const response = await chrome.runtime.sendMessage({
@@ -40,7 +49,8 @@
           asin,
         });
 
-        if (asin !== this.currentAsin) {
+        latestAsin = this.getCurrentPageAsin();
+        if (latestAsin !== asin) {
           return;
         }
 
@@ -50,6 +60,11 @@
           window.UiDisplay.renderError(response);
         }
       } catch (error) {
+        latestAsin = this.getCurrentPageAsin();
+        if (latestAsin !== asin) {
+          return;
+        }
+
         window.UiDisplay.renderError(
           {
             ok: false,
@@ -63,6 +78,13 @@
         );
       } finally {
         this.inFlight = false;
+        const shouldRetry =
+          this.pendingRefresh &&
+          (latestAsin !== asin || !document.getElementById("sakura-checker-result"));
+        this.pendingRefresh = false;
+        if (shouldRetry) {
+          this.refreshForCurrentPage();
+        }
       }
     }
 
@@ -71,7 +93,6 @@
       const observer = new MutationObserver(() => {
         if (window.location.href !== previousUrl) {
           previousUrl = window.location.href;
-          this.currentAsin = null;
           this.refreshForCurrentPage();
           return;
         }
