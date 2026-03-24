@@ -198,6 +198,140 @@
     });
   }
 
+  function executeTabFunction(tabId, func, args = [], defaultMessage = "Failed to run a script.") {
+    return new Promise((resolve, reject) => {
+      if (
+        typeof chrome === "undefined" ||
+        !chrome.scripting ||
+        typeof chrome.scripting.executeScript !== "function"
+      ) {
+        reject(new Error("chrome.scripting.executeScript is not available."));
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId },
+          func,
+          args,
+        },
+        (injectionResults) => {
+          if (
+            typeof chrome !== "undefined" &&
+            chrome.runtime &&
+            chrome.runtime.lastError
+          ) {
+            reject(createChromeError(defaultMessage));
+            return;
+          }
+
+          const firstResult = Array.isArray(injectionResults) ? injectionResults[0] : null;
+          resolve(firstResult ? firstResult.result : null);
+        }
+      );
+    });
+  }
+
+  function waitForTabReload(tabId, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    return new Promise((resolve, reject) => {
+      if (
+        typeof chrome === "undefined" ||
+        !chrome.tabs ||
+        !chrome.tabs.onUpdated ||
+        typeof chrome.tabs.onUpdated.addListener !== "function"
+      ) {
+        reject(new Error("chrome.tabs.onUpdated is not available."));
+        return;
+      }
+
+      let settled = false;
+      let sawLoading = false;
+      let timeoutId = null;
+
+      function cleanup() {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
+        chrome.tabs.onUpdated.removeListener(handleUpdated);
+      }
+
+      function handleUpdated(updatedTabId, changeInfo, tab) {
+        if (updatedTabId !== tabId) {
+          return;
+        }
+
+        if (changeInfo.status === "loading") {
+          sawLoading = true;
+          return;
+        }
+
+        if (sawLoading && (changeInfo.status === "complete" || (tab && tab.status === "complete"))) {
+          cleanup();
+          resolve(tab || { id: tabId, status: "complete" });
+        }
+      }
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("Timed out waiting for the Sakura Checker page to reload."));
+      }, timeoutMs);
+
+      chrome.tabs.onUpdated.addListener(handleUpdated);
+    });
+  }
+
+  async function submitProductUrlSearch(tabId, amazonProductUrl, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const reloadPromise = waitForTabReload(tabId, timeoutMs);
+    const submissionResult = await executeTabFunction(
+      tabId,
+      (productUrl) => {
+        const input = document.querySelector("#urlsearchForm");
+        if (!input) {
+          return {
+            ok: false,
+            message: "The Sakura Checker search input is not available.",
+          };
+        }
+
+        input.value = productUrl;
+        input.setAttribute("value", productUrl);
+
+        if (typeof self.setactionsearchForm === "function") {
+          self.setactionsearchForm(true);
+          return { ok: true, method: "setactionsearchForm" };
+        }
+
+        const form = document.querySelector("#searchForm");
+        if (!form) {
+          return {
+            ok: false,
+            message: "The Sakura Checker search form is not available.",
+          };
+        }
+
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+        return { ok: true, method: "submit" };
+      },
+      [amazonProductUrl],
+      "Failed to submit the Sakura Checker URL search."
+    );
+
+    if (!submissionResult || submissionResult.ok !== true) {
+      throw new Error(
+        submissionResult && submissionResult.message
+          ? submissionResult.message
+          : "Could not submit the Sakura Checker URL search."
+      );
+    }
+
+    await reloadPromise;
+  }
+
   function waitForTabComplete(tabId, timeoutMs = DEFAULT_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
       if (
@@ -309,7 +443,13 @@
     };
   }
 
-  async function fetchRenderedScore({ asin, sourceUrl, timeoutMs, pollIntervalMs }) {
+  async function fetchRenderedScore({
+    asin,
+    sourceUrl,
+    timeoutMs,
+    pollIntervalMs,
+    urlSearchProductUrl,
+  }) {
     let tab = null;
 
     try {
@@ -319,6 +459,9 @@
       });
 
       await waitForTabComplete(tab.id, timeoutMs);
+      if (typeof urlSearchProductUrl === "string" && urlSearchProductUrl.trim()) {
+        await submitProductUrlSearch(tab.id, urlSearchProductUrl, timeoutMs);
+      }
       await injectParserWithRetry(tab.id, {
         timeoutMs,
         pollIntervalMs,

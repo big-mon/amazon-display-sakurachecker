@@ -36,6 +36,10 @@
     return `https://sakura-checker.jp/search/${asin}/`;
   }
 
+  function buildAmazonProductUrl(asin) {
+    return `https://www.amazon.co.jp/dp/${encodeURIComponent(String(asin || ""))}`;
+  }
+
   function resolveSakuraUrl(value) {
     if (!value) {
       return value;
@@ -271,6 +275,10 @@
     );
   }
 
+  function shouldRetryWithProductUrl(renderedResult) {
+    return Boolean(renderedResult && renderedResult.code === "url_search_required");
+  }
+
   async function fetchFreshScore({
     asin,
     fetchRenderedScore,
@@ -299,6 +307,22 @@
         error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
         sourceUrl
       );
+    }
+
+    if (shouldRetryWithProductUrl(renderedResult)) {
+      try {
+        renderedResult = await fetchRenderedScore({
+          asin,
+          sourceUrl,
+          urlSearchProductUrl: buildAmazonProductUrl(asin),
+        });
+      } catch (error) {
+        return createFailure(
+          "network_error",
+          error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
+          sourceUrl
+        );
+      }
     }
 
     if (!renderedResult || !renderedResult.ok) {
@@ -373,6 +397,7 @@
   }
 
   return {
+    buildAmazonProductUrl,
     buildDetailUrl,
     buildSourceUrl,
     checkSakuraScore,

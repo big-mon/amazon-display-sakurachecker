@@ -42,6 +42,18 @@ test("extractRenderedScore reads the itemsearch row for the requested ASIN", () 
   assert.deepEqual(result.verdict.lines, ["危険", "サクラ度 90%"]);
 });
 
+test("extractRenderedScore reports when itemsearch asks for an Amazon product URL", () => {
+  const document = parseDocument(
+    fixtures.itemSearchNoResultsHtml,
+    "https://sakura-checker.jp/itemsearch/?word=QjBCSkRZNkQxVw=="
+  );
+  const result = renderedParser.extractRenderedScore(document, "B0BJDY6D1W");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "url_search_required");
+  assert.equal(result.retryable, false);
+});
+
 test("extractRenderedScore prefers the richest rendered product card", () => {
   const document = parseDocument(fixtures.comparisonHeavyProductHtml);
   const result = renderedParser.extractRenderedScore(document);

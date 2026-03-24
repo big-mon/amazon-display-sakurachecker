@@ -49,6 +49,14 @@ test("buildDetailUrl creates the Sakura Checker detail URL", () => {
   );
 });
 
+test("buildAmazonProductUrl creates the canonical Amazon product URL", () => {
+  apiClient.__testing.reset();
+  assert.equal(
+    apiClient.buildAmazonProductUrl("B08N5WRWNW"),
+    "https://www.amazon.co.jp/dp/B08N5WRWNW"
+  );
+});
+
 test("encodeItemSearchWord base64-encodes the ASIN", () => {
   assert.equal(apiClient.encodeItemSearchWord("B091BGMKYS"), "QjA5MUJHTUtZUw==");
 });
@@ -240,6 +248,51 @@ test("checkSakuraScore returns not_found when the product is missing", async () 
 
   assert.equal(result.ok, false);
   assert.equal(result.code, "not_found");
+});
+
+test("checkSakuraScore falls back to an Amazon product URL search when itemsearch requires it", async () => {
+  apiClient.__testing.reset();
+  const calls = [];
+
+  const result = await apiClient.checkSakuraScore({
+    asin: "B0BJDY6D1W",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async (options) => {
+      calls.push(options);
+
+      if (calls.length === 1) {
+        return {
+          ok: false,
+          code: "url_search_required",
+          message: "Sakura Checker asked for an Amazon product URL search.",
+        };
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], {
+    asin: "B0BJDY6D1W",
+    sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjBCSkRZNkQxVw==",
+  });
+  assert.deepEqual(calls[1], {
+    asin: "B0BJDY6D1W",
+    sourceUrl: "https://sakura-checker.jp/search/B0BJDY6D1W/",
+    urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0BJDY6D1W",
+  });
 });
 
 test("checkSakuraScore deduplicates concurrent requests for the same ASIN", async () => {

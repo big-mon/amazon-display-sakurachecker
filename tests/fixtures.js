@@ -590,6 +590,18 @@ const itemSearchResultHtml = `
   </html>
 `;
 
+const itemSearchNoResultsHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div id="javascriptEnabled">
+        <p>商品名検索では商品が見つかりませんでした。</p>
+        <p>アマゾン製品URLでのURL検索をお試し下さい。URLでは必ず検出できます。</p>
+      </div>
+    </body>
+  </html>
+`;
+
 const productAndModernHtml = sampleHtml.replace(
   "</body>",
   `
@@ -619,6 +631,7 @@ module.exports = {
   comparisonPrimaryItemInfo,
   comparisonSecondaryItemInfo,
   htmlWithInjectedScore,
+  itemSearchNoResultsHtml,
   itemSearchResultHtml,
   injectedDecodedScript,
   injectedPayload,

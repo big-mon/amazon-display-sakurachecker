@@ -77,6 +77,27 @@ function installChromeStub({ completeDelayMs = 0, parserInjectionResponder, scri
           return;
         }
         extractCalls += 1;
+        if (
+          Array.isArray(details.args) &&
+          details.args.length === 1 &&
+          typeof details.args[0] === "string" &&
+          /amazon\.co\.jp\/dp\//.test(details.args[0])
+        ) {
+          const tab = tabs.get(details.target.tabId);
+          if (tab) {
+            tab.status = "loading";
+            for (const listener of listeners) {
+              listener(tab.id, { status: "loading" }, tab);
+            }
+
+            setTimeout(() => {
+              tab.status = "complete";
+              for (const listener of listeners) {
+                listener(tab.id, { status: "complete" }, tab);
+              }
+            }, completeDelayMs);
+          }
+        }
         callback([
           {
             result: scriptResponder(details, extractCalls),
@@ -242,6 +263,69 @@ test("fetchRenderedScore returns terminal extraction errors without retrying for
     assert.equal(result.message, "Broken markup");
     assert.equal(stub.removeCalls.length, 1);
     assert.equal(stub.extractCalls, 1);
+  } finally {
+    stub.cleanup();
+  }
+});
+
+test("fetchRenderedScore can trigger a Sakura Checker product URL search before extracting", async () => {
+  const stub = installChromeStub({
+    scriptResponder(details) {
+      if (
+        Array.isArray(details.args) &&
+        details.args.length === 1 &&
+        typeof details.args[0] === "string" &&
+        /amazon\.co\.jp\/dp\/B0BJDY6D1W/.test(details.args[0])
+      ) {
+        return {
+          ok: true,
+          method: "setactionsearchForm",
+        };
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "4" }],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+  });
+
+  try {
+    const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B0BJDY6D1W",
+      sourceUrl: "https://sakura-checker.jp/search/B0BJDY6D1W/",
+      urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0BJDY6D1W",
+      timeoutMs: 200,
+      pollIntervalMs: 1,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(stub.createCalls.length, 1);
+    assert.ok(stub.extractCalls >= 2);
+    assert.ok(
+      stub.executeDetails.some(
+        (details) =>
+          Array.isArray(details.args) &&
+          details.args[0] === "https://www.amazon.co.jp/dp/B0BJDY6D1W"
+      )
+    );
+    assert.ok(
+      stub.executeDetails.some(
+        (details) =>
+          Array.isArray(details.files) &&
+          details.files[0] === "background/rendered-score-parser.js"
+      )
+    );
+    assert.ok(
+      stub.executeDetails.some(
+        (details) => Array.isArray(details.args) && details.args[0] === "B0BJDY6D1W"
+      )
+    );
   } finally {
     stub.cleanup();
   }
