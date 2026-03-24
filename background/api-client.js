@@ -15,10 +15,6 @@
   const CACHE_PREFIX = "score:";
   const MIN_REQUEST_INTERVAL_MS = 2000;
   const MAX_REQUEST_JITTER_MS = 250;
-  const inFlightRequests = new Map();
-  let nextAllowedRequestAt = 0;
-  let rateLimitChain = Promise.resolve();
-  let requestExecutionChain = Promise.resolve();
 
   function encodeItemSearchWord(value) {
     const normalizedValue = String(value || "");
@@ -108,107 +104,218 @@
   }
 
   function hasValidSuccessPayload(payload) {
-    return Boolean(
-      payload &&
-      payload.ok === true &&
-      hasValidScorePayload(payload.score)
-    );
+    return Boolean(payload && payload.ok === true && hasValidScorePayload(payload.score));
   }
 
-  function hasStorage() {
-    return (
-      typeof chrome !== "undefined" &&
-      chrome.storage &&
-      chrome.storage.local &&
-      typeof chrome.storage.local.get === "function"
-    );
-  }
-
-  function storageGet(key) {
-    if (!hasStorage()) {
-      return Promise.resolve(null);
+  function createStorageAdapter() {
+    function hasStorage() {
+      return (
+        typeof chrome !== "undefined" &&
+        chrome.storage &&
+        chrome.storage.local &&
+        typeof chrome.storage.local.get === "function"
+      );
     }
 
-    return new Promise((resolve) => {
-      chrome.storage.local.get([key], (result) => {
-        resolve(result[key] || null);
+    function get(key) {
+      if (!hasStorage()) {
+        return Promise.resolve(null);
+      }
+
+      return new Promise((resolve) => {
+        chrome.storage.local.get([key], (result) => {
+          resolve(result[key] || null);
+        });
       });
-    });
-  }
-
-  function storageSet(key, value) {
-    if (!hasStorage()) {
-      return Promise.resolve();
     }
 
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [key]: value }, () => resolve());
-    });
-  }
+    function set(key, value) {
+      if (!hasStorage()) {
+        return Promise.resolve();
+      }
 
-  async function readCache(asin) {
-    const cacheKey = `${CACHE_PREFIX}${asin}`;
-    const cachedValue = await storageGet(cacheKey);
-    if (!cachedValue) {
-      return null;
-    }
-
-    const fetchedAt = Date.parse(cachedValue.fetchedAt);
-    if (Number.isNaN(fetchedAt) || Date.now() - fetchedAt > CACHE_TTL_MS) {
-      return null;
-    }
-
-    if (!hasValidSuccessPayload(cachedValue)) {
-      return null;
+      return new Promise((resolve) => {
+        chrome.storage.local.set({ [key]: value }, () => resolve());
+      });
     }
 
     return {
-      ...cachedValue,
-      sourceUrl: buildDetailUrl(asin),
+      get,
+      set,
     };
   }
 
-  async function writeCache(asin, payload) {
-    const cacheKey = `${CACHE_PREFIX}${asin}`;
-    await storageSet(cacheKey, payload);
+  function createScoreCache({ storage, ttlMs, keyPrefix, buildDetailUrlImpl }) {
+    async function read(asin) {
+      const cacheKey = `${keyPrefix}${asin}`;
+      const cachedValue = await storage.get(cacheKey);
+      if (!cachedValue) {
+        return null;
+      }
+
+      const fetchedAt = Date.parse(cachedValue.fetchedAt);
+      if (Number.isNaN(fetchedAt) || Date.now() - fetchedAt > ttlMs) {
+        return null;
+      }
+
+      if (!hasValidSuccessPayload(cachedValue)) {
+        return null;
+      }
+
+      return {
+        ...cachedValue,
+        sourceUrl: buildDetailUrlImpl(asin),
+      };
+    }
+
+    async function write(asin, payload) {
+      const cacheKey = `${keyPrefix}${asin}`;
+      await storage.set(cacheKey, payload);
+    }
+
+    return {
+      read,
+      write,
+    };
   }
 
   function defaultWait(milliseconds) {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
 
-  async function waitForRateLimit({
+  function createRequestCoordinator({
+    minRequestIntervalMs,
+    maxRequestJitterMs,
     waitImpl = defaultWait,
-    nowImpl = Date.now,
-    randomImpl = Math.random,
-  } = {}) {
-    const reservation = rateLimitChain.then(async () => {
-      const now = nowImpl();
-      const waitMs = Math.max(0, nextAllowedRequestAt - now);
-      if (waitMs > 0) {
-        await waitImpl(waitMs);
-      }
+  }) {
+    let nextAllowedRequestAt = 0;
+    let rateLimitChain = Promise.resolve();
+    let executionChain = Promise.resolve();
 
-      const randomValue = Math.min(1, Math.max(0, Number(randomImpl()) || 0));
-      const jitterMs = Math.floor(randomValue * MAX_REQUEST_JITTER_MS);
-      nextAllowedRequestAt = nowImpl() + MIN_REQUEST_INTERVAL_MS + jitterMs;
-    });
+    async function waitForTurn({
+      waitOverride = waitImpl,
+      nowImpl = Date.now,
+      randomImpl = Math.random,
+    } = {}) {
+      const reservation = rateLimitChain.then(async () => {
+        const now = nowImpl();
+        const waitMs = Math.max(0, nextAllowedRequestAt - now);
+        if (waitMs > 0) {
+          await waitOverride(waitMs);
+        }
 
-    rateLimitChain = reservation.catch(() => {});
-    return reservation;
+        const randomValue = Math.min(1, Math.max(0, Number(randomImpl()) || 0));
+        const jitterMs = Math.floor(randomValue * maxRequestJitterMs);
+        nextAllowedRequestAt = nowImpl() + minRequestIntervalMs + jitterMs;
+      });
+
+      rateLimitChain = reservation.catch(() => {});
+      return reservation;
+    }
+
+    function enqueue(task) {
+      const queuedTask = executionChain.then(task, task);
+      executionChain = queuedTask.catch(() => {});
+      return queuedTask;
+    }
+
+    function reset() {
+      nextAllowedRequestAt = 0;
+      rateLimitChain = Promise.resolve();
+      executionChain = Promise.resolve();
+    }
+
+    return {
+      enqueue,
+      reset,
+      waitForTurn,
+    };
   }
 
-  function enqueueRequest(task) {
-    const queuedTask = requestExecutionChain.then(task, task);
-    requestExecutionChain = queuedTask.catch(() => {});
-    return queuedTask;
-  }
+  const storageAdapter = createStorageAdapter();
+  const scoreCache = createScoreCache({
+    storage: storageAdapter,
+    ttlMs: CACHE_TTL_MS,
+    keyPrefix: CACHE_PREFIX,
+    buildDetailUrlImpl: buildDetailUrl,
+  });
+  const requestCoordinator = createRequestCoordinator({
+    minRequestIntervalMs: MIN_REQUEST_INTERVAL_MS,
+    maxRequestJitterMs: MAX_REQUEST_JITTER_MS,
+  });
+  const inFlightRequests = new Map();
 
   function resetForTests() {
     inFlightRequests.clear();
-    nextAllowedRequestAt = 0;
-    rateLimitChain = Promise.resolve();
-    requestExecutionChain = Promise.resolve();
+    requestCoordinator.reset();
+  }
+
+  function buildSuccessPayload(asin, renderedResult) {
+    return {
+      ok: true,
+      cached: false,
+      fetchedAt: new Date().toISOString(),
+      sourceUrl: buildDetailUrl(asin),
+      score: renderedResult.score,
+      verdict: normalizeVerdict(renderedResult.verdict),
+    };
+  }
+
+  function normalizeFetchFailure(asin, renderedResult) {
+    return createFailure(
+      renderedResult && renderedResult.code ? renderedResult.code : "parse_error",
+      renderedResult && renderedResult.message
+        ? renderedResult.message
+        : "Could not extract a rendered Sakura Checker score.",
+      buildDetailUrl(asin)
+    );
+  }
+
+  async function fetchFreshScore({
+    asin,
+    fetchRenderedScore,
+    nowImpl,
+    randomImpl,
+    waitImpl,
+  }) {
+    const requestUrl = buildSourceUrl(asin);
+    const sourceUrl = buildDetailUrl(asin);
+    let renderedResult = null;
+
+    await requestCoordinator.waitForTurn({
+      waitOverride: waitImpl,
+      nowImpl,
+      randomImpl,
+    });
+
+    try {
+      renderedResult = await fetchRenderedScore({
+        asin,
+        sourceUrl: requestUrl,
+      });
+    } catch (error) {
+      return createFailure(
+        "network_error",
+        error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
+        sourceUrl
+      );
+    }
+
+    if (!renderedResult || !renderedResult.ok) {
+      return normalizeFetchFailure(asin, renderedResult);
+    }
+
+    if (!hasValidSuccessPayload(renderedResult)) {
+      return createFailure(
+        "parse_error",
+        "The rendered Sakura Checker response did not include a usable score.",
+        sourceUrl
+      );
+    }
+
+    const payload = buildSuccessPayload(asin, renderedResult);
+    await scoreCache.write(asin, payload);
+    return payload;
   }
 
   async function checkSakuraScore({
@@ -219,7 +326,6 @@
     randomImpl,
     waitImpl,
   }) {
-    const requestUrl = buildSourceUrl(asin);
     const sourceUrl = buildDetailUrl(asin);
 
     if (!RenderedScoreClient && typeof fetchRenderedScoreImpl !== "function") {
@@ -231,7 +337,7 @@
     }
 
     if (!forceRefresh) {
-      const cachedValue = await readCache(asin);
+      const cachedValue = await scoreCache.read(asin);
       if (cachedValue) {
         return { ...cachedValue, cached: true };
       }
@@ -246,76 +352,35 @@
       return inFlightRequests.get(asin);
     }
 
-    const requestPromise = enqueueRequest(async () => {
-      let renderedResult = null;
-
-      await waitForRateLimit({
-        waitImpl,
-        nowImpl,
-        randomImpl,
-      });
-
-      try {
-        renderedResult = await fetchRenderedScore({
+    const requestPromise = requestCoordinator
+      .enqueue(() =>
+        fetchFreshScore({
           asin,
-          sourceUrl: requestUrl,
-        });
-      } catch (error) {
-        return createFailure(
-          "network_error",
-          error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
-          sourceUrl
-        );
-      }
-
-      if (!renderedResult || !renderedResult.ok) {
-        return createFailure(
-          renderedResult && renderedResult.code ? renderedResult.code : "parse_error",
-          renderedResult && renderedResult.message
-            ? renderedResult.message
-            : "Could not extract a rendered Sakura Checker score.",
-          sourceUrl
-        );
-      }
-
-      if (!hasValidSuccessPayload(renderedResult)) {
-        return createFailure(
-          "parse_error",
-          "The rendered Sakura Checker response did not include a usable score.",
-          sourceUrl
-        );
-      }
-
-      const payload = {
-        ok: true,
-        cached: false,
-        fetchedAt: new Date().toISOString(),
-        sourceUrl,
-        score: renderedResult.score,
-        verdict: normalizeVerdict(renderedResult.verdict),
-      };
-
-      await writeCache(asin, payload);
-
-      return payload;
-    }).finally(() => {
-      if (inFlightRequests.get(asin) === requestPromise) {
-        inFlightRequests.delete(asin);
-      }
-    });
+          fetchRenderedScore,
+          nowImpl,
+          randomImpl,
+          waitImpl,
+        })
+      )
+      .finally(() => {
+        if (inFlightRequests.get(asin) === requestPromise) {
+          inFlightRequests.delete(asin);
+        }
+      });
 
     inFlightRequests.set(asin, requestPromise);
     return requestPromise;
   }
 
   return {
-    __resetForTests: resetForTests,
     buildDetailUrl,
     buildSourceUrl,
     checkSakuraScore,
-    createFailure,
     encodeItemSearchWord,
-    readCache,
-    writeCache,
+    __testing: {
+      readCache: scoreCache.read,
+      reset: resetForTests,
+      writeCache: scoreCache.write,
+    },
   };
 });

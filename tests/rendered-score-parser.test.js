@@ -118,6 +118,17 @@ test("extractRenderedScore waits when only unrelated legacy cards are rendered f
   assert.equal(result.retryable, true);
 });
 
+test("extractRenderedScore prefers the modern summary over a pending legacy card", () => {
+  const document = parseDocument(fixtures.targetedRenderedLoadingWithModernHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.suffix, "%");
+  assert.equal(result.score.images.length, 1);
+  assert.ok(result.verdict);
+  assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/sakura_lv00.png");
+});
+
 test("extractRenderedScore falls back to the rendered modern summary when needed", () => {
   const document = parseDocument(fixtures.fixedRenderedModernHtml);
   const result = renderedParser.extractRenderedScore(document);

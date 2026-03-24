@@ -5,8 +5,6 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
-const renderedParser = require("../background/rendered-score-parser.js");
-
 const CHROME_PATHS = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
@@ -15,6 +13,10 @@ const CHROME_PATHS = [
 ];
 const WAIT_TIMEOUT_MS = 30000;
 const browserCompareEnabled = process.env.ENABLE_BROWSER_COMPARE === "1";
+const parserScriptSource = fs.readFileSync(
+  path.join(__dirname, "..", "background", "rendered-score-parser.js"),
+  "utf8"
+);
 
 function getChromePath() {
   return CHROME_PATHS.find((candidate) => fs.existsSync(candidate)) || null;
@@ -229,7 +231,16 @@ async function waitForSakuraPageReady(cdpClient, asin) {
 }
 
 async function waitForRenderedPrimaryScore(cdpClient, extractSource, asin) {
-  const expression = `(${extractSource})(document, ${JSON.stringify(asin)})`;
+  const expression = `(() => {
+    if (
+      !self.RenderedScoreParser ||
+      typeof self.RenderedScoreParser.extractRenderedScore !== "function"
+    ) {
+      (0, eval)(${JSON.stringify(extractSource)});
+    }
+
+    return self.RenderedScoreParser.extractRenderedScore(document, ${JSON.stringify(asin)});
+  })()`;
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < WAIT_TIMEOUT_MS) {
@@ -377,7 +388,7 @@ test("browser-rendered top score visually matches the rendered DOM extractor out
 }, async () => {
   const asin = "B095JGJCC7";
   const url = `https://sakura-checker.jp/search/${asin}/`;
-  const extractSource = renderedParser.extractRenderedScore.toString();
+  const extractSource = parserScriptSource;
 
   const session = await launchChrome(chromePath);
 

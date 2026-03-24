@@ -1,5 +1,4 @@
 importScripts(
-  "background/rendered-score-parser.js",
   "background/rendered-score-client.js",
   "background/api-client.js"
 );
@@ -11,7 +10,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
   self.ApiClient.checkSakuraScore({
     asin: request.asin,
-    forceRefresh: Boolean(request.forceRefresh),
   })
     .then((result) => sendResponse(result))
     .catch((error) => {
@@ -19,7 +17,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         ok: false,
         code: "network_error",
         message: error instanceof Error ? error.message : "Unexpected background error.",
-        sourceUrl: self.ApiClient.buildSourceUrl(request.asin),
+        sourceUrl: self.ApiClient.buildDetailUrl(request.asin),
       });
     });
 

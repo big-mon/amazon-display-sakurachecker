@@ -1,18 +1,13 @@
 (function (root, factory) {
-  const exportsObject = factory(
-    root.RenderedScoreParser,
-    typeof module !== "undefined" && module.exports
-      ? require("./rendered-score-parser.js")
-      : null
-  );
+  const exportsObject = factory();
   if (typeof module !== "undefined" && module.exports) {
     module.exports = exportsObject;
   }
   root.RenderedScoreClient = exportsObject;
-})(typeof self !== "undefined" ? self : globalThis, function (workerParser, nodeParser) {
-  const RenderedScoreParser = workerParser || nodeParser;
+})(typeof self !== "undefined" ? self : globalThis, function () {
   const DEFAULT_TIMEOUT_MS = 15000;
   const DEFAULT_POLL_INTERVAL_MS = 250;
+  const PARSER_SCRIPT_FILE = "background/rendered-score-parser.js";
 
   function delay(milliseconds) {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -102,6 +97,58 @@
     });
   }
 
+  function injectParser(tabId) {
+    return new Promise((resolve, reject) => {
+      if (
+        typeof chrome === "undefined" ||
+        !chrome.scripting ||
+        typeof chrome.scripting.executeScript !== "function"
+      ) {
+        reject(new Error("chrome.scripting.executeScript is not available."));
+        return;
+      }
+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId },
+          files: [PARSER_SCRIPT_FILE],
+        },
+        () => {
+          if (
+            typeof chrome !== "undefined" &&
+            chrome.runtime &&
+            chrome.runtime.lastError
+          ) {
+            reject(createChromeError("Failed to prepare the Sakura Checker parser."));
+            return;
+          }
+
+          resolve();
+        }
+      );
+    });
+  }
+
+  async function injectParserWithRetry(tabId, options = {}) {
+    const timeoutMs = Number(options.timeoutMs || DEFAULT_TIMEOUT_MS);
+    const pollIntervalMs = Number(options.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS);
+    const startedAt = Date.now();
+    let lastError = null;
+
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        await injectParser(tabId);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+
+      await delay(pollIntervalMs);
+    }
+
+    throw lastError || new Error("Timed out preparing the Sakura Checker parser.");
+  }
+
   function executeExtract(tabId, asin) {
     return new Promise((resolve, reject) => {
       if (
@@ -113,18 +160,25 @@
         return;
       }
 
-      if (
-        !RenderedScoreParser ||
-        typeof RenderedScoreParser.extractRenderedScore !== "function"
-      ) {
-        reject(new Error("RenderedScoreParser.extractRenderedScore is not available."));
-        return;
-      }
-
       chrome.scripting.executeScript(
         {
           target: { tabId },
-          func: RenderedScoreParser.extractRenderedScore,
+          func: (requestedAsin) => {
+            if (
+              typeof self === "undefined" ||
+              !self.RenderedScoreParser ||
+              typeof self.RenderedScoreParser.extractRenderedScore !== "function"
+            ) {
+              return {
+                ok: false,
+                code: "parse_error",
+                message: "RenderedScoreParser.extractRenderedScore is not available.",
+                retryable: false,
+              };
+            }
+
+            return self.RenderedScoreParser.extractRenderedScore(document, requestedAsin);
+          },
           args: asin ? [asin] : [],
         },
         (injectionResults) => {
@@ -265,6 +319,10 @@
       });
 
       await waitForTabComplete(tab.id, timeoutMs);
+      await injectParserWithRetry(tab.id, {
+        timeoutMs,
+        pollIntervalMs,
+      });
       return await pollExtractedScore(tab.id, {
         asin,
         timeoutMs,
@@ -278,14 +336,6 @@
   }
 
   return {
-    DEFAULT_POLL_INTERVAL_MS,
-    DEFAULT_TIMEOUT_MS,
-    executeExtract,
     fetchRenderedScore,
-    pollExtractedScore,
-    tabsCreate,
-    tabsGet,
-    tabsRemove,
-    waitForTabComplete,
   };
 });

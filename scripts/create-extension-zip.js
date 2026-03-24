@@ -17,6 +17,7 @@ const entries = [
   { type: "directory", relativePath: "background" },
   { type: "directory", relativePath: "content" },
   { type: "directory", relativePath: "icons" },
+  { type: "directory", relativePath: "shared" },
 ];
 
 function normalizeArchivePath(relativePath) {
