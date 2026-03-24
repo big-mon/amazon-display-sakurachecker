@@ -20,7 +20,23 @@
   let rateLimitChain = Promise.resolve();
   let requestExecutionChain = Promise.resolve();
 
+  function encodeItemSearchWord(value) {
+    const normalizedValue = String(value || "");
+    if (typeof btoa === "function") {
+      return btoa(normalizedValue);
+    }
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(normalizedValue, "utf8").toString("base64");
+    }
+
+    throw new Error("No Base64 encoder is available.");
+  }
+
   function buildSourceUrl(asin) {
+    return `https://sakura-checker.jp/itemsearch/?word=${encodeItemSearchWord(asin)}`;
+  }
+
+  function buildDetailUrl(asin) {
     return `https://sakura-checker.jp/search/${asin}/`;
   }
 
@@ -72,14 +88,23 @@
   }
 
   function hasValidScorePayload(score) {
-    return Boolean(
-      score &&
-      typeof score === "object" &&
-      Array.isArray(score.images) &&
-      score.images.length > 0 &&
-      score.images.every(hasValidScoreImage) &&
-      typeof score.suffix === "string"
-    );
+    if (!score || typeof score !== "object" || typeof score.suffix !== "string") {
+      return false;
+    }
+
+    if (score.kind === "visual-image") {
+      return Boolean(
+        Array.isArray(score.images) &&
+        score.images.length > 0 &&
+        score.images.every(hasValidScoreImage)
+      );
+    }
+
+    if (score.kind === "text") {
+      return typeof score.value === "string" && score.value.trim().length > 0;
+    }
+
+    return false;
   }
 
   function hasValidSuccessPayload(payload) {
@@ -137,7 +162,10 @@
       return null;
     }
 
-    return cachedValue;
+    return {
+      ...cachedValue,
+      sourceUrl: buildDetailUrl(asin),
+    };
   }
 
   async function writeCache(asin, payload) {
@@ -191,7 +219,8 @@
     randomImpl,
     waitImpl,
   }) {
-    const sourceUrl = buildSourceUrl(asin);
+    const requestUrl = buildSourceUrl(asin);
+    const sourceUrl = buildDetailUrl(asin);
 
     if (!RenderedScoreClient && typeof fetchRenderedScoreImpl !== "function") {
       return createFailure(
@@ -229,7 +258,7 @@
       try {
         renderedResult = await fetchRenderedScore({
           asin,
-          sourceUrl,
+          sourceUrl: requestUrl,
         });
       } catch (error) {
         return createFailure(
@@ -281,9 +310,11 @@
 
   return {
     __resetForTests: resetForTests,
+    buildDetailUrl,
     buildSourceUrl,
     checkSakuraScore,
     createFailure,
+    encodeItemSearchWord,
     readCache,
     writeCache,
   };

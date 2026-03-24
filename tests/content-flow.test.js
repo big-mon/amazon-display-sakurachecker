@@ -245,6 +245,15 @@ function findImages(root) {
   return images;
 }
 
+function findByClass(root, className) {
+  return findFirst(root, (element) =>
+    String(element.className || "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .includes(className)
+  );
+}
+
 test("content.js initializes SakuraChecker immediately after document_end", () => {
   const document = new FakeDocument({
     url: "https://www.amazon.co.jp/dp/B095JGJCC7",
@@ -268,7 +277,9 @@ test("UiDisplay renders the panel after the Amazon title area", () => {
   const context = createExecutionContext({ document });
   loadScript(context, "content/ui-display.js");
 
-  context.window.UiDisplay.renderLoading("https://sakura-checker.jp/search/B095JGJCC7/");
+  context.window.UiDisplay.renderLoading(
+    "https://sakura-checker.jp/itemsearch/?word=QjA5NUpHSkNDNw=="
+  );
 
   const root = document.getElementById("sakura-checker-result");
   assert.ok(root);
@@ -277,7 +288,7 @@ test("UiDisplay renders the panel after the Amazon title area", () => {
 
   const link = findFirst(root, (element) => element.tagName === "A");
   assert.ok(link);
-  assert.equal(link.href, "https://sakura-checker.jp/search/B095JGJCC7/");
+  assert.equal(link.href, "https://sakura-checker.jp/itemsearch/?word=QjA5NUpHSkNDNw==");
 });
 
 test("AsinExtractor ignores search result data-asin entries on non-product pages", () => {
@@ -335,7 +346,7 @@ test("SakuraChecker refresh shows loading first and then renders fetched score i
   resolveResponse.resolve({
     ok: true,
     cached: false,
-    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjA5NUpHSkNDNw==",
     score: {
       kind: "visual-image",
       suffix: "/5",
@@ -362,6 +373,39 @@ test("SakuraChecker refresh shows loading first and then renders fetched score i
   assert.equal(images[0].src, "data:image/png;base64,AAA");
   assert.equal(images[1].src, "data:image/png;base64,BBB");
   assert.equal(images[2].src, "https://sakura-checker.jp/images/rv_level03.png");
+});
+
+test("UiDisplay renders text-based itemsearch scores", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B091BGMKYS");
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/ui-display.js");
+
+  context.window.UiDisplay.renderSuccess({
+    ok: true,
+    cached: false,
+    sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjA5MUJHTUtZUw==",
+    score: {
+      kind: "text",
+      value: "1.93",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["危険", "サクラ度 90%"],
+    },
+  });
+
+  const root = document.getElementById("sakura-checker-result");
+  assert.ok(root);
+  assert.equal(root.dataset.state, "success");
+
+  const scoreText = findByClass(root, "sc-score-text");
+  assert.ok(scoreText);
+  assert.equal(scoreText.textContent, "1.93");
+
+  const verdictText = findByClass(root, "sc-verdict-text");
+  assert.ok(verdictText);
+  assert.equal(verdictText.textContent, "危険 / サクラ度 90%");
 });
 
 test("SakuraChecker does not render or fetch on non-product pages that contain search-result ASINs", async () => {
