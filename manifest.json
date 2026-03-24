@@ -21,6 +21,7 @@
         "https://www.amazon.co.jp/*"
       ],
       "js": [
+        "shared/asin-utils.js",
         "content/asin-extractor.js",
         "content/ui-display.js",
         "content/sakura-checker.js",

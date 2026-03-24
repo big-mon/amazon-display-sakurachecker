@@ -34,7 +34,7 @@ function installChromeStorageStub() {
 }
 
 test("buildSourceUrl creates the Sakura Checker search URL", () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   assert.equal(
     apiClient.buildSourceUrl("B08N5WRWNW"),
     "https://sakura-checker.jp/itemsearch/?word=QjA4TjVXUldOVw=="
@@ -42,7 +42,7 @@ test("buildSourceUrl creates the Sakura Checker search URL", () => {
 });
 
 test("buildDetailUrl creates the Sakura Checker detail URL", () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   assert.equal(
     apiClient.buildDetailUrl("B08N5WRWNW"),
     "https://sakura-checker.jp/search/B08N5WRWNW/"
@@ -54,7 +54,7 @@ test("encodeItemSearchWord base64-encodes the ASIN", () => {
 });
 
 test("checkSakuraScore caches successful rendered responses", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const cleanup = installChromeStorageStub();
   let fetchRenderedScoreCalls = 0;
 
@@ -116,12 +116,12 @@ test("checkSakuraScore caches successful rendered responses", async () => {
 });
 
 test("checkSakuraScore ignores malformed cached successes and refetches", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const cleanup = installChromeStorageStub();
   let fetchRenderedScoreCalls = 0;
 
   try {
-    await apiClient.writeCache("B08N5WRWNW", {
+    await apiClient.__testing.writeCache("B08N5WRWNW", {
       ok: true,
       fetchedAt: new Date().toISOString(),
       sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjA4TjVXUldOVw==",
@@ -158,7 +158,7 @@ test("checkSakuraScore ignores malformed cached successes and refetches", async 
 });
 
 test("checkSakuraScore returns blocked when rendered extraction is blocked", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
@@ -176,7 +176,7 @@ test("checkSakuraScore returns blocked when rendered extraction is blocked", asy
 });
 
 test("checkSakuraScore rejects successful responses that do not include a usable score", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
@@ -198,7 +198,7 @@ test("checkSakuraScore rejects successful responses that do not include a usable
 });
 
 test("checkSakuraScore accepts text-based itemsearch scores", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const result = await apiClient.checkSakuraScore({
     asin: "B091BGMKYS",
     forceRefresh: true,
@@ -225,7 +225,7 @@ test("checkSakuraScore accepts text-based itemsearch scores", async () => {
 });
 
 test("checkSakuraScore returns not_found when the product is missing", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
@@ -243,7 +243,7 @@ test("checkSakuraScore returns not_found when the product is missing", async () 
 });
 
 test("checkSakuraScore deduplicates concurrent requests for the same ASIN", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   let fetchRenderedScoreCalls = 0;
   let resolveRequest = null;
 
@@ -287,7 +287,7 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN", asyn
 });
 
 test("checkSakuraScore serializes concurrent requests for different ASINs", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const startedAsins = [];
   const resolvers = [];
   let activeRequests = 0;
@@ -351,7 +351,7 @@ test("checkSakuraScore serializes concurrent requests for different ASINs", asyn
 });
 
 test("checkSakuraScore continues the queue after a request throws", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const startedAsins = [];
 
   const fetchRenderedScoreImpl = async ({ asin }) => {
@@ -395,7 +395,7 @@ test("checkSakuraScore continues the queue after a request throws", async () => 
 });
 
 test("checkSakuraScore applies a global request interval between ASINs", async () => {
-  apiClient.__resetForTests();
+  apiClient.__testing.reset();
   const waits = [];
 
   const fetchRenderedScoreImpl = async () => ({

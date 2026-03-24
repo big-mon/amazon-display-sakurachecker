@@ -4,20 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { chromium } = require("playwright");
-
-function extractAsinFromUrl(urlValue) {
-  if (!urlValue) {
-    return null;
-  }
-
-  try {
-    const parsed = new URL(urlValue);
-    const match = parsed.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
-    return match ? match[1].toUpperCase() : null;
-  } catch {
-    return null;
-  }
-}
+const { extractAsinFromUrl } = require("../shared/asin-utils.js");
 
 function resolveAsin() {
   const explicitAsin = process.env.SAKURA_E2E_ASIN;
@@ -48,10 +35,6 @@ const SUCCESS_SCREENSHOT_PATH = path.join(OUTPUT_DIR, `extension-e2e-${DEFAULT_A
 const SETTLE_TIMEOUT_MS = Number(process.env.SAKURA_E2E_TIMEOUT_MS || 45000);
 const EXPECTED_SUFFIX = process.env.SAKURA_E2E_EXPECT_SUFFIX || "/5";
 const HEADLESS = process.env.PW_EXTENSION_HEADLESS !== "0";
-
-function encodeItemSearchWord(value) {
-  return Buffer.from(String(value || ""), "utf8").toString("base64");
-}
 
 function isSupportedSuffix(value) {
   return value === "/5" || value === "%";

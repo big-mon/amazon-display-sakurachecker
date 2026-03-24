@@ -6,11 +6,11 @@
     }
 
     init() {
-      this.refreshForCurrentPage(false);
+      this.refreshForCurrentPage();
       this.observePageChanges();
     }
 
-    async refreshForCurrentPage(forceRefresh) {
+    async refreshForCurrentPage() {
       if (!window.AsinExtractor || !window.UiDisplay) {
         return;
       }
@@ -38,7 +38,6 @@
         const response = await chrome.runtime.sendMessage({
           action: "checkSakuraScore",
           asin,
-          forceRefresh: Boolean(forceRefresh),
         });
 
         if (asin !== this.currentAsin) {
@@ -73,12 +72,12 @@
         if (window.location.href !== previousUrl) {
           previousUrl = window.location.href;
           this.currentAsin = null;
-          this.refreshForCurrentPage(false);
+          this.refreshForCurrentPage();
           return;
         }
 
         if (this.currentAsin && !document.getElementById("sakura-checker-result")) {
-          this.refreshForCurrentPage(false);
+          this.refreshForCurrentPage();
         }
       });
 

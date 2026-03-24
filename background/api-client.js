@@ -309,13 +309,14 @@
   }
 
   return {
-    __resetForTests: resetForTests,
     buildDetailUrl,
     buildSourceUrl,
     checkSakuraScore,
-    createFailure,
     encodeItemSearchWord,
-    readCache,
-    writeCache,
+    __testing: {
+      readCache,
+      reset: resetForTests,
+      writeCache,
+    },
   };
 });

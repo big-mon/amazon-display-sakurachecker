@@ -275,6 +275,7 @@ test("content.js initializes SakuraChecker immediately after document_end", () =
 test("UiDisplay renders the panel after the Amazon title area", () => {
   const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
   const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
   loadScript(context, "content/ui-display.js");
 
   context.window.UiDisplay.renderLoading(
@@ -298,6 +299,7 @@ test("AsinExtractor ignores search result data-asin entries on non-product pages
   document.body.appendChild(searchResult);
 
   const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
   loadScript(context, "content/asin-extractor.js");
 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
@@ -312,6 +314,7 @@ test("AsinExtractor reads the canonical product URL when pathname is not a produ
   document.head.appendChild(canonical);
 
   const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
   loadScript(context, "content/asin-extractor.js");
 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), "B095JGJCC7");
@@ -331,11 +334,12 @@ test("SakuraChecker refresh shows loading first and then renders fetched score i
   };
   const context = createExecutionContext({ document, chrome });
 
+  loadScript(context, "shared/asin-utils.js");
   loadScript(context, "content/asin-extractor.js");
   loadScript(context, "content/ui-display.js");
   loadScript(context, "content/sakura-checker.js");
 
-  const refreshPromise = context.window.SakuraChecker.refreshForCurrentPage(false);
+  const refreshPromise = context.window.SakuraChecker.refreshForCurrentPage();
 
   const loadingRoot = document.getElementById("sakura-checker-result");
   assert.ok(loadingRoot);
@@ -425,11 +429,12 @@ test("SakuraChecker does not render or fetch on non-product pages that contain s
   };
   const context = createExecutionContext({ document, chrome });
 
+  loadScript(context, "shared/asin-utils.js");
   loadScript(context, "content/asin-extractor.js");
   loadScript(context, "content/ui-display.js");
   loadScript(context, "content/sakura-checker.js");
 
-  await context.window.SakuraChecker.refreshForCurrentPage(false);
+  await context.window.SakuraChecker.refreshForCurrentPage();
 
   assert.equal(sendMessageCalled, false);
   assert.equal(document.getElementById("sakura-checker-result"), null);

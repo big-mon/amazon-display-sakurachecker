@@ -1,13 +1,12 @@
 (function () {
-  const PRODUCT_PATH_PATTERN = /\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i;
+  const asinUtils = window.AsinUtils;
 
-  function extractAsinFromPath(path) {
-    const match = String(path || "").match(PRODUCT_PATH_PATTERN);
-    return match ? match[1].toUpperCase() : null;
+  if (!asinUtils) {
+    throw new Error("AsinUtils is not available.");
   }
 
   function extractProductASIN() {
-    const pathAsin = extractAsinFromPath(window.location.pathname);
+    const pathAsin = asinUtils.extractAsinFromPath(window.location.pathname);
     if (pathAsin) {
       return pathAsin;
     }
@@ -15,7 +14,7 @@
     const canonical = document.querySelector('link[rel="canonical"]');
     const canonicalHref = canonical && canonical.getAttribute("href");
     if (canonicalHref) {
-      const canonicalAsin = extractAsinFromPath(canonicalHref);
+      const canonicalAsin = asinUtils.extractAsinFromUrl(canonicalHref);
       if (canonicalAsin) {
         return canonicalAsin;
       }

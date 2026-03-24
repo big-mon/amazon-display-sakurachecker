@@ -278,14 +278,6 @@
   }
 
   return {
-    DEFAULT_POLL_INTERVAL_MS,
-    DEFAULT_TIMEOUT_MS,
-    executeExtract,
     fetchRenderedScore,
-    pollExtractedScore,
-    tabsCreate,
-    tabsGet,
-    tabsRemove,
-    waitForTabComplete,
   };
 });
