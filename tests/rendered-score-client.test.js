@@ -14,6 +14,7 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
   const removeCalls = [];
   let nextTabId = 1;
   let executeCalls = 0;
+  let extractCalls = 0;
   const executeDetails = [];
 
   global.chrome = {
@@ -65,9 +66,10 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
           callback([{ result: null }]);
           return;
         }
+        extractCalls += 1;
         callback([
           {
-            result: scriptResponder(details, executeCalls),
+            result: scriptResponder(details, extractCalls),
           },
         ]);
       },
@@ -79,6 +81,9 @@ function installChromeStub({ completeDelayMs = 0, scriptResponder }) {
     removeCalls,
     get executeCalls() {
       return executeCalls;
+    },
+    get extractCalls() {
+      return extractCalls;
     },
     executeDetails,
     cleanup() {
@@ -124,7 +129,7 @@ test("fetchRenderedScore creates a temporary tab, polls, and closes it on succes
     assert.equal(stub.createCalls.length, 1);
     assert.equal(stub.createCalls[0].active, false);
     assert.equal(stub.removeCalls.length, 1);
-    assert.ok(stub.executeCalls >= 2);
+    assert.ok(stub.extractCalls >= 2);
     assert.deepEqual(stub.executeDetails[0].files, ["background/rendered-score-parser.js"]);
     assert.deepEqual(stub.executeDetails[1].args, ["B095JGJCC7"]);
   } finally {
@@ -155,7 +160,7 @@ test("fetchRenderedScore closes the temporary tab after a render timeout", async
     assert.equal(result.ok, false);
     assert.equal(result.code, "parse_error");
     assert.equal(stub.removeCalls.length, 1);
-    assert.ok(stub.executeCalls > 2);
+    assert.ok(stub.extractCalls > 1);
   } finally {
     stub.cleanup();
   }
@@ -185,7 +190,7 @@ test("fetchRenderedScore returns terminal extraction errors without retrying for
     assert.equal(result.code, "parse_error");
     assert.equal(result.message, "Broken markup");
     assert.equal(stub.removeCalls.length, 1);
-    assert.equal(stub.executeCalls, 2);
+    assert.equal(stub.extractCalls, 1);
   } finally {
     stub.cleanup();
   }

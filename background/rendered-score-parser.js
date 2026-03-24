@@ -592,7 +592,7 @@
     }
 
     const legacy = extractLegacyScore(context);
-    if (legacy && (legacy.ok || legacy.code === "not_ready")) {
+    if (legacy && legacy.ok) {
       return legacy;
     }
 
@@ -604,6 +604,10 @@
     const ambiguousLegacy = extractLegacyScore(context, { allowAmbiguousMatches: true });
     if (ambiguousLegacy && ambiguousLegacy.ok) {
       return ambiguousLegacy;
+    }
+
+    if (legacy && legacy.code === "not_ready") {
+      return legacy;
     }
 
     return buildFallbackResult(context);

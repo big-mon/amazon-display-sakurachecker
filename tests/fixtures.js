@@ -463,6 +463,28 @@ const ambiguousWrapperWithModernHtml = `
   </html>
 `;
 
+const targetedRenderedLoadingWithModernHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0OTHER999/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${targetedSecondaryItemInfo}
+      </div>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        <div id="target-loader" class="loader"></div>
+      </div>
+      ${modernSakuraAlertMarkup}
+      ${modernSakuraRatingMarkup}
+    </body>
+  </html>
+`;
+
 const modernInjectedHtml = `
   <!DOCTYPE html>
   <html lang="ja">
@@ -621,6 +643,7 @@ module.exports = {
   sameWrapReviewCountTiebreakHtml,
   scrambledScoreValue,
   targetedRenderedLoadingHtml,
+  targetedRenderedLoadingWithModernHtml,
   targetedRenderedProductHtml,
   targetReviewWrap,
   verdictImageTag,
