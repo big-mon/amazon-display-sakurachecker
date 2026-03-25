@@ -267,6 +267,38 @@ const targetedRenderedProductHtml = `
   </html>
 `;
 
+const targetedUnavailablePrimaryItemInfo = `
+  <div class="item-info targeted-unavailable">
+    <div class="item-review-box">
+      <div class="item-review-after"></div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv00"><img src="/images/rv_level00.png" alt="unavailable verdict"></p>
+        <p class="item-rv-score">Insufficient reviews to calculate a score</p>
+      </div>
+    </div>
+  </div>
+`;
+
+const targetedUnavailableProductHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0OTHER999/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${targetedSecondaryItemInfo}
+      </div>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0CPS3DZ3H/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${targetedUnavailablePrimaryItemInfo}
+      </div>
+    </body>
+  </html>
+`;
+
 const targetedRenderedLoadingHtml = `
   <!DOCTYPE html>
   <html lang="ja">
@@ -327,6 +359,45 @@ const wrapperScopedLegacyHtml = `
         </div>
         ${wrapperScopedOtherItemInfo}
         ${wrapperScopedTargetItemInfo}
+      </div>
+    </body>
+  </html>
+`;
+
+const wrapperScopedUnavailableItemInfo = `
+  <div class="item-info wrapper-scoped-unavailable">
+    <div class="item-review-box">
+      <div class="item-review-after"></div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv00"><img src="/images/rv_level00.png" alt="unavailable verdict"></p>
+        <p class="item-rv-score">Not enough reviews for a Sakura Checker score</p>
+      </div>
+    </div>
+  </div>
+`;
+
+const wrapperScopedOtherUnavailableItemInfo = `
+  <div class="item-info wrapper-scoped-other-unavailable">
+    <div class="item-review-box">
+      <div class="item-review-after"></div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv00"><img src="/images/rv_level00.png" alt="other unavailable verdict"></p>
+        <p class="item-rv-score">Comparison card has no score yet</p>
+      </div>
+    </div>
+  </div>
+`;
+
+const wrapperScopedUnavailableLegacyHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        ${wrapperScopedOtherUnavailableItemInfo}
+        ${wrapperScopedUnavailableItemInfo}
       </div>
     </body>
   </html>
@@ -658,7 +729,9 @@ module.exports = {
   targetedRenderedLoadingHtml,
   targetedRenderedLoadingWithModernHtml,
   targetedRenderedProductHtml,
+  targetedUnavailableProductHtml,
   targetReviewWrap,
   verdictImageTag,
   wrapperScopedLegacyHtml,
+  wrapperScopedUnavailableLegacyHtml,
 };

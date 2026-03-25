@@ -7,4 +7,6 @@
 5. Confirm the panel first shows `取得中` and then shows a decoded score image plus `/5`.
 6. Click `再試行` and confirm the panel refreshes without leaving the page.
 7. Click `サクラチェッカーを開く` and confirm it opens `https://sakura-checker.jp/search/<ASIN>/`.
-8. Open a non-product page on Amazon.co.jp and confirm the panel is removed.
+8. Open a product page whose Sakura Checker score is not yet available, such as `B0CPS3DZ3H`.
+9. Confirm the panel ends in the error state and no extra Sakura Checker tab is left open after the fetch completes.
+10. Open a non-product page on Amazon.co.jp and confirm the panel is removed.

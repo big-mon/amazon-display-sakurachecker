@@ -301,6 +301,44 @@
     };
   }
 
+  function findUnavailableLegacyCandidate(context, itemInfos) {
+    const candidates = Array.isArray(itemInfos) ? itemInfos : [];
+
+    return candidates.find((itemInfo) => {
+      if (!itemInfo) {
+        return false;
+      }
+
+      const reviewWrap =
+        typeof itemInfo.closest === "function" ? itemInfo.closest(".item-review-wrap") : null;
+      if (
+        itemInfo.querySelector(".loader, .loading") ||
+        (reviewWrap && reviewWrap.querySelector(".loader, .loading"))
+      ) {
+        return false;
+      }
+
+      const verdictLines = getVerdictLines(
+        itemInfo.querySelector(".item-review-level .item-rv-score, .item-rv-score")
+      );
+      if (!verdictLines.length) {
+        return false;
+      }
+
+      const ratingNodes = itemInfo.querySelectorAll("p.item-rating");
+      const ratingImages = getRatingImages(context, ratingNodes);
+      if (ratingImages.length) {
+        return false;
+      }
+
+      const ratingText = normalizeText(
+        Array.from(ratingNodes, (ratingNode) => ratingNode.textContent || "").join(" ")
+      );
+
+      return !ratingText.includes("/5");
+    });
+  }
+
   function collectLegacyCandidates(context, allowAmbiguousMatches) {
     const seen = new Set();
     const candidates = Array.from(
@@ -386,6 +424,19 @@
     );
 
     if (!bestCandidate) {
+      if (
+        findUnavailableLegacyCandidate(
+          context,
+          scopedCandidates.length ? scopedCandidates : matchingCandidates
+        )
+      ) {
+        return createFailure(
+          "not_available",
+          "Sakura Checker has not published a score for this product yet.",
+          false
+        );
+      }
+
       if (
         context.requestedAsin &&
         candidates.length &&
@@ -643,7 +694,11 @@
       return ambiguousLegacy;
     }
 
-    if (legacy && legacy.code === "not_ready") {
+    if (ambiguousLegacy && ambiguousLegacy.ok === false) {
+      return ambiguousLegacy;
+    }
+
+    if (legacy && legacy.ok === false) {
       return legacy;
     }
 
