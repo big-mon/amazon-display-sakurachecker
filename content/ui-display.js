@@ -277,7 +277,7 @@
     const indicator = document.createElement("span");
     indicator.className = "sc-status-indicator";
     indicator.dataset.statusTone = statusTone;
-    indicator.textContent = "●";
+    indicator.textContent = getStatusSymbol(statusTone);
 
     const tooltip =
       `${currentLabel}\n` +
@@ -289,6 +289,18 @@
 
     value.appendChild(indicator);
     return value;
+  }
+
+  function getStatusSymbol(statusTone) {
+    if (statusTone === "fresh") {
+      return "✓";
+    }
+
+    if (statusTone === "error") {
+      return "×";
+    }
+
+    return "●";
   }
 
   function createVerdictNode(verdict) {

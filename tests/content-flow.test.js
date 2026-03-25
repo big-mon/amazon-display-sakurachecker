@@ -550,6 +550,34 @@ test("UiDisplay renders a cached-status indicator with tooltip guidance", () => 
   assert.match(indicator.title, /赤: 取得に失敗した値/);
 });
 
+test("UiDisplay renders a fresh-status indicator as a checkmark", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/ui-display.js");
+
+  context.window.UiDisplay.renderSuccess({
+    ok: true,
+    cached: false,
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    score: {
+      kind: "text",
+      value: "4.29",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["合格", "サクラ度 0%"],
+    },
+  });
+
+  const root = document.getElementById("sakura-checker-result");
+  const indicator = findByClass(root, "sc-status-indicator");
+
+  assert.ok(indicator);
+  assert.equal(indicator.textContent, "✓");
+  assert.equal(indicator.dataset.statusTone, "fresh");
+});
+
 test("UiDisplay places the status dot above right-aligned action buttons", () => {
   const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
   const context = createExecutionContext({ document });
@@ -604,6 +632,7 @@ test("UiDisplay renders an error-status indicator in red", () => {
   const indicator = findByClass(root, "sc-status-indicator");
 
   assert.ok(indicator);
+  assert.equal(indicator.textContent, "×");
   assert.equal(indicator.dataset.statusTone, "error");
   assert.equal(indicator.getAttribute("aria-label"), "取得失敗");
 });
