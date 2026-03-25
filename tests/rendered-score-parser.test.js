@@ -130,6 +130,42 @@ test("extractRenderedScore waits when only unrelated legacy cards are rendered f
   assert.equal(result.retryable, true);
 });
 
+test("extractRenderedScore keeps retrying when a target card has a loader and only a loading verdict", () => {
+  const document = parseDocument(fixtures.targetedRenderedLoadingWithVerdictHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_ready");
+  assert.equal(result.retryable, true);
+});
+
+test("extractRenderedScore reports not_available for a rendered product card without any score", () => {
+  const document = parseDocument(fixtures.targetedUnavailableProductHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0CPS3DZ3H");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_available");
+  assert.equal(result.retryable, false);
+});
+
+test("extractRenderedScore propagates not_available from ambiguous wrapper-scoped matches", () => {
+  const document = parseDocument(fixtures.wrapperScopedUnavailableLegacyHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_available");
+  assert.equal(result.retryable, false);
+});
+
+test("extractRenderedScore does not let a sibling loader hide an exact unavailable target card", () => {
+  const document = parseDocument(fixtures.wrapperScopedExactUnavailableWithSiblingLoaderHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_available");
+  assert.equal(result.retryable, false);
+});
+
 test("extractRenderedScore prefers the modern summary over a pending legacy card", () => {
   const document = parseDocument(fixtures.targetedRenderedLoadingWithModernHtml);
   const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
