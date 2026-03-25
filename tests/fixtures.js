@@ -424,6 +424,38 @@ const wrapperScopedUnavailableLegacyHtml = `
   </html>
 `;
 
+const exactUnavailableTargetItemInfo = `
+  <div class="item-info exact-unavailable-target">
+    <div class="item-review-box">
+      <div class="item-review-after"></div>
+      <div class="item-review-level">
+        <p class="item-rv-lv item-rv-lv00"><img src="/images/rv_level00.png" alt="target unavailable verdict"></p>
+        <p class="item-rv-score">Target product does not have enough reviews yet</p>
+        <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" class="button button-blue button-mini" target="_blank" rel="nofollow">target</a>
+      </div>
+    </div>
+  </div>
+`;
+
+const wrapperScopedExactUnavailableWithSiblingLoaderHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        <div class="item-info sibling-loading-card">
+          <div class="item-review-box">
+            <div id="comparison-loader" class="loader"></div>
+          </div>
+        </div>
+        ${exactUnavailableTargetItemInfo}
+      </div>
+    </body>
+  </html>
+`;
+
 const repeatedDigitImageTag = '<img src="data:image/png;base64,LOWDIGIT" alt="repeat-digit">';
 const narrowSeparatorImageTag = '<img src="data:image/png;base64,SEPARATOR" alt="separator">';
 const distinctLargeImageTag = '<img src="data:image/png;base64,HIGH-A" alt="distinct-large">';
@@ -755,5 +787,6 @@ module.exports = {
   targetReviewWrap,
   verdictImageTag,
   wrapperScopedLegacyHtml,
+  wrapperScopedExactUnavailableWithSiblingLoaderHtml,
   wrapperScopedUnavailableLegacyHtml,
 };

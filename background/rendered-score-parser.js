@@ -309,12 +309,7 @@
         return false;
       }
 
-      const reviewWrap =
-        typeof itemInfo.closest === "function" ? itemInfo.closest(".item-review-wrap") : null;
-      if (
-        itemInfo.querySelector(".loader, .loading") ||
-        (reviewWrap && reviewWrap.querySelector(".loader, .loading"))
-      ) {
+      if (itemInfo.querySelector(".loader, .loading")) {
         return false;
       }
 

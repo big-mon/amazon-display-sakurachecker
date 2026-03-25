@@ -157,6 +157,15 @@ test("extractRenderedScore propagates not_available from ambiguous wrapper-scope
   assert.equal(result.retryable, false);
 });
 
+test("extractRenderedScore does not let a sibling loader hide an exact unavailable target card", () => {
+  const document = parseDocument(fixtures.wrapperScopedExactUnavailableWithSiblingLoaderHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_available");
+  assert.equal(result.retryable, false);
+});
+
 test("extractRenderedScore prefers the modern summary over a pending legacy card", () => {
   const document = parseDocument(fixtures.targetedRenderedLoadingWithModernHtml);
   const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
