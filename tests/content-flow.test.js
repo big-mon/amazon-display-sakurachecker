@@ -488,6 +488,119 @@ test("SakuraChecker renders a refresh button for cached results and refetches on
   assert.equal(refreshButton, null);
 });
 
+test("SakuraChecker preserves a pending force refresh while another refresh is in flight", async () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const sendMessageCalls = [];
+  const resolvers = [];
+  const chrome = {
+    runtime: {
+      sendMessage: async (payload) =>
+        new Promise((resolve) => {
+          sendMessageCalls.push(payload);
+          resolvers.push(resolve);
+        }),
+    },
+  };
+  const context = createExecutionContext({ document, chrome });
+
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+  loadScript(context, "content/ui-display.js");
+  loadScript(context, "content/sakura-checker.js");
+
+  let removePanelAfterSuccess = false;
+  const originalRenderSuccess = context.window.UiDisplay.renderSuccess;
+  context.window.UiDisplay.renderSuccess = (...args) => {
+    originalRenderSuccess(...args);
+    if (removePanelAfterSuccess) {
+      const root = document.getElementById("sakura-checker-result");
+      if (root) {
+        root.remove();
+      }
+    }
+  };
+
+  const initialRefreshPromise = context.window.SakuraChecker.refreshForCurrentPage();
+  assert.equal(sendMessageCalls.length, 1);
+  assert.equal(sendMessageCalls[0].forceRefresh, false);
+
+  resolvers.shift()({
+    ok: true,
+    cached: true,
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    score: {
+      kind: "text",
+      value: "4.29",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["合格", "サクラ度 0%"],
+    },
+  });
+
+  await initialRefreshPromise;
+
+  const cachedRoot = document.getElementById("sakura-checker-result");
+  const refreshButton = findFirstByTag(cachedRoot, "button");
+  assert.ok(refreshButton);
+
+  const overlappingRefreshPromise = context.window.SakuraChecker.refreshForCurrentPage();
+  assert.equal(sendMessageCalls.length, 2);
+  assert.equal(sendMessageCalls[1].forceRefresh, false);
+
+  refreshButton.dispatchEvent({ type: "click" });
+  removePanelAfterSuccess = true;
+
+  resolvers.shift()({
+    ok: true,
+    cached: true,
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    score: {
+      kind: "text",
+      value: "4.29",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["合格", "サクラ度 0%"],
+    },
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sendMessageCalls.length, 3);
+  assert.equal(sendMessageCalls[2].forceRefresh, true);
+  removePanelAfterSuccess = false;
+
+  resolvers.shift()({
+    ok: true,
+    cached: false,
+    sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+    score: {
+      kind: "text",
+      value: "4.70",
+      suffix: "/5",
+    },
+    verdict: {
+      kind: "text-verdict",
+      lines: ["合格", "サクラ度 0%"],
+    },
+  });
+
+  await overlappingRefreshPromise;
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const root = document.getElementById("sakura-checker-result");
+  const scoreText = findByClass(root, "sc-score-text");
+  const latestRefreshButton = findFirstByTag(root, "button");
+
+  assert.ok(root);
+  assert.equal(root.dataset.state, "success");
+  assert.ok(scoreText);
+  assert.equal(scoreText.textContent, "4.70");
+  assert.equal(latestRefreshButton, null);
+});
+
 test("UiDisplay renders the Sakura Checker link as an icon button", () => {
   const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
   const context = createExecutionContext({ document });
