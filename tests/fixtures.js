@@ -319,6 +319,27 @@ const targetedRenderedLoadingHtml = `
   </html>
 `;
 
+const targetedRenderedLoadingWithVerdictHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="item-review-wrap">
+        <div class="item-image">
+          <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+        </div>
+        <div class="item-info targeted-loading-with-verdict">
+          <div class="item-review-box">
+            <div class="item-review-level">
+              <p class="item-rv-score">読み込み中</p>
+            </div>
+          </div>
+          <div id="target-loader-with-verdict" class="loader"></div>
+        </div>
+      </div>
+    </body>
+  </html>
+`;
+
 const wrapperScopedOtherItemInfo = `
   <div class="item-info wrapper-scoped-other">
     <div class="item-review-box">
@@ -727,6 +748,7 @@ module.exports = {
   sameWrapReviewCountTiebreakHtml,
   scrambledScoreValue,
   targetedRenderedLoadingHtml,
+  targetedRenderedLoadingWithVerdictHtml,
   targetedRenderedLoadingWithModernHtml,
   targetedRenderedProductHtml,
   targetedUnavailableProductHtml,

@@ -130,6 +130,15 @@ test("extractRenderedScore waits when only unrelated legacy cards are rendered f
   assert.equal(result.retryable, true);
 });
 
+test("extractRenderedScore keeps retrying when a target card has a loader and only a loading verdict", () => {
+  const document = parseDocument(fixtures.targetedRenderedLoadingWithVerdictHtml);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_ready");
+  assert.equal(result.retryable, true);
+});
+
 test("extractRenderedScore reports not_available for a rendered product card without any score", () => {
   const document = parseDocument(fixtures.targetedUnavailableProductHtml);
   const result = renderedParser.extractRenderedScore(document, "B0CPS3DZ3H");
