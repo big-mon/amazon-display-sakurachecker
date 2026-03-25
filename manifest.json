@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "サクラチェッカー表示 for Amazon.co.jp",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Amazon.co.jpの商品ページで、サクラチェッカーの評価をその場で確認。別タブで調べる手間なく、購入判断をすばやくサポートします。",
   "permissions": [
     "storage",

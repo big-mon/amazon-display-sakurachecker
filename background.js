@@ -10,6 +10,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
   self.ApiClient.checkSakuraScore({
     asin: request.asin,
+    forceRefresh: request.forceRefresh === true,
   })
     .then((result) => sendResponse(result))
     .catch((error) => {
