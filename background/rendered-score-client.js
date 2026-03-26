@@ -25,8 +25,12 @@
   }
 
   function resolveTimeoutMs(value, fallback) {
+    if (value === undefined || value === null) {
+      return fallback;
+    }
+
     const resolved = Number(value);
-    return Number.isFinite(resolved) && resolved > 0 ? resolved : fallback;
+    return Number.isFinite(resolved) ? Math.max(0, resolved) : fallback;
   }
 
   function tabsCreate(createProperties) {
@@ -507,13 +511,15 @@
       if (typeof urlSearchProductUrl === "string" && urlSearchProductUrl.trim()) {
         await submitProductUrlSearch(tab.id, urlSearchProductUrl, effectiveLoadTimeoutMs);
       }
+      const renderDeadline = Date.now() + effectiveRenderTimeoutMs;
       await injectParserWithRetry(tab.id, {
         timeoutMs: effectiveRenderTimeoutMs,
         pollIntervalMs,
       });
+      const remainingRenderTimeoutMs = Math.max(0, renderDeadline - Date.now());
       return await pollExtractedScore(tab.id, {
         asin,
-        timeoutMs: effectiveRenderTimeoutMs,
+        timeoutMs: remainingRenderTimeoutMs,
         pollIntervalMs,
       });
     } finally {

@@ -293,6 +293,49 @@ test("fetchRenderedScore retries transient parser injection failures before poll
   }
 });
 
+test("fetchRenderedScore uses the remaining render timeout after parser injection retries", async () => {
+  const stub = installChromeStub({
+    parserInjectionResponder(_details, callCount) {
+      if (callCount === 1) {
+        return "The tab is still navigating.";
+      }
+
+      return null;
+    },
+    scriptResponder() {
+      throw new Error("Polling should not start after the render deadline is exhausted.");
+    },
+  });
+  const originalDateNow = Date.now;
+  const nowValues = [1000, 1000, 1000, 1009, 1010, 1010, 1010];
+  let lastNowValue = nowValues[0];
+  Date.now = () => {
+    if (nowValues.length > 0) {
+      lastNowValue = nowValues.shift();
+    }
+
+    return lastNowValue;
+  };
+
+  try {
+    const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B095JGJCC7",
+      sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
+      timeoutMs: 200,
+      renderTimeoutMs: 10,
+      pollIntervalMs: 1,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "parse_error");
+    assert.equal(stub.parserInjectionCalls, 2);
+    assert.equal(stub.extractCalls, 0);
+  } finally {
+    Date.now = originalDateNow;
+    stub.cleanup();
+  }
+});
+
 test("fetchRenderedScore closes the temporary tab after a render timeout", async () => {
   const stub = installChromeStub({
     scriptResponder() {
