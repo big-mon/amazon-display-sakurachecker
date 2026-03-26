@@ -5,7 +5,8 @@
   }
   root.RenderedScoreClient = exportsObject;
 })(typeof self !== "undefined" ? self : globalThis, function () {
-  const DEFAULT_TIMEOUT_MS = 15000;
+  const DEFAULT_TAB_TIMEOUT_MS = 15000;
+  const DEFAULT_RENDER_TIMEOUT_MS = 3000;
   const DEFAULT_POLL_INTERVAL_MS = 250;
   const PARSER_SCRIPT_FILE = "background/rendered-score-parser.js";
 
@@ -21,6 +22,11 @@
     }
 
     return new Error(defaultMessage);
+  }
+
+  function resolveTimeoutMs(value, fallback) {
+    const resolved = Number(value);
+    return Number.isFinite(resolved) && resolved > 0 ? resolved : fallback;
   }
 
   function tabsCreate(createProperties) {
@@ -130,7 +136,7 @@
   }
 
   async function injectParserWithRetry(tabId, options = {}) {
-    const timeoutMs = Number(options.timeoutMs || DEFAULT_TIMEOUT_MS);
+    const timeoutMs = resolveTimeoutMs(options.timeoutMs, DEFAULT_RENDER_TIMEOUT_MS);
     const pollIntervalMs = Number(options.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS);
     const startedAt = Date.now();
     let lastError = null;
@@ -232,7 +238,7 @@
     });
   }
 
-  function waitForTabReload(tabId, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  function waitForTabReload(tabId, timeoutMs = DEFAULT_TAB_TIMEOUT_MS) {
     let cleanup = () => {};
 
     const promise = new Promise((resolve, reject) => {
@@ -294,7 +300,7 @@
     };
   }
 
-  async function submitProductUrlSearch(tabId, amazonProductUrl, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  async function submitProductUrlSearch(tabId, amazonProductUrl, timeoutMs = DEFAULT_TAB_TIMEOUT_MS) {
     const reloadHandle = waitForTabReload(tabId, timeoutMs);
     let submissionResult = null;
 
@@ -361,7 +367,7 @@
     await reloadHandle.promise;
   }
 
-  function waitForTabComplete(tabId, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  function waitForTabComplete(tabId, timeoutMs = DEFAULT_TAB_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
       if (
         typeof chrome === "undefined" ||
@@ -426,7 +432,7 @@
   }
 
   async function pollExtractedScore(tabId, options = {}) {
-    const timeoutMs = Number(options.timeoutMs || DEFAULT_TIMEOUT_MS);
+    const timeoutMs = resolveTimeoutMs(options.timeoutMs, DEFAULT_RENDER_TIMEOUT_MS);
     const pollIntervalMs = Number(options.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS);
     const asin = options.asin || null;
     const startedAt = Date.now();
@@ -476,10 +482,20 @@
     asin,
     sourceUrl,
     timeoutMs,
+    loadTimeoutMs,
+    renderTimeoutMs,
     pollIntervalMs,
     urlSearchProductUrl,
   }) {
     let tab = null;
+    const effectiveLoadTimeoutMs = resolveTimeoutMs(
+      loadTimeoutMs,
+      resolveTimeoutMs(timeoutMs, DEFAULT_TAB_TIMEOUT_MS)
+    );
+    const effectiveRenderTimeoutMs = resolveTimeoutMs(
+      renderTimeoutMs,
+      resolveTimeoutMs(timeoutMs, DEFAULT_RENDER_TIMEOUT_MS)
+    );
 
     try {
       tab = await tabsCreate({
@@ -487,17 +503,17 @@
         active: false,
       });
 
-      await waitForTabComplete(tab.id, timeoutMs);
+      await waitForTabComplete(tab.id, effectiveLoadTimeoutMs);
       if (typeof urlSearchProductUrl === "string" && urlSearchProductUrl.trim()) {
-        await submitProductUrlSearch(tab.id, urlSearchProductUrl, timeoutMs);
+        await submitProductUrlSearch(tab.id, urlSearchProductUrl, effectiveLoadTimeoutMs);
       }
       await injectParserWithRetry(tab.id, {
-        timeoutMs,
+        timeoutMs: effectiveRenderTimeoutMs,
         pollIntervalMs,
       });
       return await pollExtractedScore(tab.id, {
         asin,
-        timeoutMs,
+        timeoutMs: effectiveRenderTimeoutMs,
         pollIntervalMs,
       });
     } finally {
