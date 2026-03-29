@@ -3,7 +3,7 @@
   const UNSUPPORTED_SECTION_PATTERNS = [
     /^\/gp\/video(?:\/|$)/i,
     /^\/(?:prime-video|Prime-Video)(?:\/|$)/i,
-    /^\/music(?:\/|$)/i,
+    /^\/music\/player(?:\/|$)/i,
     /^\/gp\/dmusic(?:\/|$)/i,
   ];
 

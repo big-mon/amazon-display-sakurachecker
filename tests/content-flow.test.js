@@ -404,6 +404,16 @@ test("AsinExtractor ignores Prime Video and music pages even when canonical has 
   assert.equal(context.window.AsinExtractor.isProductPage(), false);
 });
 
+test("AsinExtractor still detects standard product URLs under the music section", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/music/dp/B091BGMKYS");
+  const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), "B091BGMKYS");
+  assert.equal(context.window.AsinExtractor.isProductPage(), true);
+});
+
 test("SakuraChecker refresh shows loading first and then renders fetched score images", async () => {
   const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
   let resolveResponse = null;
