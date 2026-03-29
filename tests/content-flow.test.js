@@ -376,6 +376,59 @@ test("AsinExtractor reads the canonical product URL when pathname is not a produ
   assert.equal(context.window.AsinExtractor.isProductPage(), true);
 });
 
+test("AsinExtractor ignores Prime Video and music pages even when canonical has a product ASIN", () => {
+  const primeVideoDocument = createPageDocument("https://www.amazon.co.jp/gp/video/detail/B0PRIME123");
+  const primeCanonical = primeVideoDocument.createElement("link");
+  primeCanonical.setAttribute("rel", "canonical");
+  primeCanonical.setAttribute("href", "https://www.amazon.co.jp/dp/B095JGJCC7");
+  primeVideoDocument.head.appendChild(primeCanonical);
+
+  let context = createExecutionContext({ document: primeVideoDocument });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
+  assert.equal(context.window.AsinExtractor.isProductPage(), false);
+
+  const localePrimeVideoDocument = createPageDocument(
+    "https://www.amazon.co.jp/-/en/gp/video/detail/B0PRIME123"
+  );
+  const localePrimeCanonical = localePrimeVideoDocument.createElement("link");
+  localePrimeCanonical.setAttribute("rel", "canonical");
+  localePrimeCanonical.setAttribute("href", "https://www.amazon.co.jp/dp/B095JGJCC7");
+  localePrimeVideoDocument.head.appendChild(localePrimeCanonical);
+
+  context = createExecutionContext({ document: localePrimeVideoDocument });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
+  assert.equal(context.window.AsinExtractor.isProductPage(), false);
+
+  const musicDocument = createPageDocument("https://www.amazon.co.jp/music/player/albums/B0MUSIC1234");
+  const musicCanonical = musicDocument.createElement("link");
+  musicCanonical.setAttribute("rel", "canonical");
+  musicCanonical.setAttribute("href", "https://www.amazon.co.jp/dp/B091BGMKYS");
+  musicDocument.head.appendChild(musicCanonical);
+
+  context = createExecutionContext({ document: musicDocument });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
+  assert.equal(context.window.AsinExtractor.isProductPage(), false);
+});
+
+test("AsinExtractor still detects standard product URLs under the music section", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/music/dp/B091BGMKYS");
+  const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), "B091BGMKYS");
+  assert.equal(context.window.AsinExtractor.isProductPage(), true);
+});
+
 test("SakuraChecker refresh shows loading first and then renders fetched score images", async () => {
   const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
   let resolveResponse = null;
@@ -877,6 +930,35 @@ test("SakuraChecker does not render or fetch on non-product pages that contain s
   const searchResult = document.createElement("div");
   searchResult.setAttribute("data-asin", "B095JGJCC7");
   document.body.appendChild(searchResult);
+
+  let sendMessageCalled = false;
+  const chrome = {
+    runtime: {
+      sendMessage: async () => {
+        sendMessageCalled = true;
+        return { ok: true };
+      },
+    },
+  };
+  const context = createExecutionContext({ document, chrome });
+
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+  loadScript(context, "content/ui-display.js");
+  loadScript(context, "content/sakura-checker.js");
+
+  await context.window.SakuraChecker.refreshForCurrentPage();
+
+  assert.equal(sendMessageCalled, false);
+  assert.equal(document.getElementById("sakura-checker-result"), null);
+});
+
+test("SakuraChecker does not render or fetch on unsupported Prime Video pages", async () => {
+  const document = createPageDocument("https://www.amazon.co.jp/gp/video/detail/B0PRIME123");
+  const canonical = document.createElement("link");
+  canonical.setAttribute("rel", "canonical");
+  canonical.setAttribute("href", "https://www.amazon.co.jp/dp/B095JGJCC7");
+  document.head.appendChild(canonical);
 
   let sendMessageCalled = false;
   const chrome = {
