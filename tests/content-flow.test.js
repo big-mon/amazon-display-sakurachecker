@@ -390,6 +390,21 @@ test("AsinExtractor ignores Prime Video and music pages even when canonical has 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
   assert.equal(context.window.AsinExtractor.isProductPage(), false);
 
+  const localePrimeVideoDocument = createPageDocument(
+    "https://www.amazon.co.jp/-/en/gp/video/detail/B0PRIME123"
+  );
+  const localePrimeCanonical = localePrimeVideoDocument.createElement("link");
+  localePrimeCanonical.setAttribute("rel", "canonical");
+  localePrimeCanonical.setAttribute("href", "https://www.amazon.co.jp/dp/B095JGJCC7");
+  localePrimeVideoDocument.head.appendChild(localePrimeCanonical);
+
+  context = createExecutionContext({ document: localePrimeVideoDocument });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
+  assert.equal(context.window.AsinExtractor.isProductPage(), false);
+
   const musicDocument = createPageDocument("https://www.amazon.co.jp/music/player/albums/B0MUSIC1234");
   const musicCanonical = musicDocument.createElement("link");
   musicCanonical.setAttribute("rel", "canonical");

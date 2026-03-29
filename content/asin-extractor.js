@@ -12,7 +12,10 @@
   }
 
   function isUnsupportedSectionPath(pathname) {
-    return UNSUPPORTED_SECTION_PATTERNS.some((pattern) => pattern.test(String(pathname || "")));
+    const normalizedPathname = String(pathname || "").replace(/^\/-\/[^/]+(?=\/|$)/i, "");
+    return UNSUPPORTED_SECTION_PATTERNS.some((pattern) =>
+      pattern.test(String(normalizedPathname || ""))
+    );
   }
 
   function extractProductASIN() {
