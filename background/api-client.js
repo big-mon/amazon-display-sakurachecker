@@ -56,6 +56,14 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
+  function buildInFlightRequestKey({ asin, productTitle, productUrl }) {
+    return JSON.stringify({
+      asin: String(asin || ""),
+      productTitle: normalizeSearchWord(productTitle),
+      productUrl: normalizeSearchWord(productUrl),
+    });
+  }
+
   function resolveSakuraUrl(value) {
     if (!value) {
       return value;
@@ -431,9 +439,14 @@
       typeof fetchRenderedScoreImpl === "function"
         ? fetchRenderedScoreImpl
         : RenderedScoreClient.fetchRenderedScore;
+    const requestKey = buildInFlightRequestKey({
+      asin,
+      productTitle,
+      productUrl,
+    });
 
-    if (inFlightRequests.has(asin)) {
-      return inFlightRequests.get(asin);
+    if (inFlightRequests.has(requestKey)) {
+      return inFlightRequests.get(requestKey);
     }
 
     const requestPromise = requestCoordinator
@@ -449,12 +462,12 @@
         })
       )
       .finally(() => {
-        if (inFlightRequests.get(asin) === requestPromise) {
-          inFlightRequests.delete(asin);
+        if (inFlightRequests.get(requestKey) === requestPromise) {
+          inFlightRequests.delete(requestKey);
         }
       });
 
-    inFlightRequests.set(asin, requestPromise);
+    inFlightRequests.set(requestKey, requestPromise);
     return requestPromise;
   }
 

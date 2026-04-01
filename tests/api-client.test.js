@@ -545,6 +545,75 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN", asyn
   assert.deepEqual(second.score, first.score);
 });
 
+test("checkSakuraScore does not deduplicate concurrent requests for the same ASIN when fallback inputs differ", async () => {
+  apiClient.__testing.reset();
+  const startedRequests = [];
+  const resolvers = [];
+
+  const fetchRenderedScoreImpl = async ({ asin, searchWord, urlSearchProductUrl, sourceUrl }) => {
+    startedRequests.push({
+      asin,
+      searchWord: searchWord || null,
+      urlSearchProductUrl: urlSearchProductUrl || null,
+      sourceUrl,
+    });
+
+    return new Promise((resolve) => {
+      resolvers.push(resolve);
+    });
+  };
+
+  const firstPromise = apiClient.checkSakuraScore({
+    asin: "B0D5RJ5BDX",
+    productTitle: "",
+    productUrl: "",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+  const secondPromise = apiClient.checkSakuraScore({
+    asin: "B0D5RJ5BDX",
+    productTitle: "Sample product title",
+    productUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
+    forceRefresh: true,
+    fetchRenderedScoreImpl,
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(resolvers.length, 1);
+
+  resolvers[0]({
+    ok: false,
+    code: "parse_error",
+    message: "Could not extract a rendered Sakura Checker score.",
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(resolvers.length, 2);
+
+  resolvers[1]({
+    ok: true,
+    score: {
+      kind: "text",
+      value: "4.99",
+      suffix: "/5",
+    },
+    verdict: null,
+  });
+
+  const [first, second] = await Promise.all([firstPromise, secondPromise]);
+  assert.equal(first.ok, false);
+  assert.equal(second.ok, true);
+  assert.equal(startedRequests.length, 2);
+  assert.deepEqual(startedRequests.map((request) => request.sourceUrl), [
+    "https://sakura-checker.jp/itemsearch/?word=QjBENVJKNUJEWA==",
+    "https://sakura-checker.jp/itemsearch/?word=QjBENVJKNUJEWA==",
+  ]);
+});
+
 test("checkSakuraScore serializes concurrent requests for different ASINs", async () => {
   apiClient.__testing.reset();
   const startedAsins = [];
