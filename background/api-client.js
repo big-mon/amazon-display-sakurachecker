@@ -295,16 +295,22 @@
     return Boolean(renderedResult && renderedResult.code === "url_search_required");
   }
 
+  // Only explicit failures should consult backup retry codes; anything else
+  // either succeeded already or is ambiguous enough to warrant one backup try.
   function shouldRetryWithBackupSearch(renderedResult) {
     if (hasValidSuccessPayload(renderedResult)) {
       return false;
     }
 
-    if (!renderedResult || renderedResult.ok !== false) {
+    if (!renderedResult) {
       return true;
     }
 
-    return BACKUP_ERROR_CODES.has(renderedResult.code);
+    if (renderedResult.ok === false) {
+      return BACKUP_ERROR_CODES.has(renderedResult.code);
+    }
+
+    return false;
   }
 
   async function attemptRenderedFetch(fetchRenderedScore, options, sourceUrl) {

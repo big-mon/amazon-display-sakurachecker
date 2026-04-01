@@ -396,6 +396,53 @@ test("checkSakuraScore falls back to a product URL search after the product titl
   });
 });
 
+test("checkSakuraScore skips the title backup when productTitle is empty and uses the provided product URL", async () => {
+  apiClient.__testing.reset();
+  const calls = [];
+
+  const result = await apiClient.checkSakuraScore({
+    asin: "B0D5RJ5BDX",
+    productTitle: "",
+    productUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async (options) => {
+      calls.push(options);
+
+      if (calls.length === 1) {
+        return {
+          ok: false,
+          code: "parse_error",
+          message: "Could not extract a rendered Sakura Checker score.",
+        };
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], {
+    asin: "B0D5RJ5BDX",
+    sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjBENVJKNUJEWA==",
+  });
+  assert.deepEqual(calls[1], {
+    asin: "B0D5RJ5BDX",
+    sourceUrl: "https://sakura-checker.jp/search/B0D5RJ5BDX/",
+    urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
+  });
+});
+
 test("checkSakuraScore returns the fallback error when URL-search retry also fails", async () => {
   apiClient.__testing.reset();
   const calls = [];

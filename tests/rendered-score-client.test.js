@@ -163,7 +163,7 @@ function installChromeStub({
           typeof details.args[0] === "string" &&
           (typeof shouldSimulateSearchReload === "function"
             ? shouldSimulateSearchReload(details.args[0])
-            : /amazon\.co\.jp\/dp\//.test(details.args[0]))
+            : Boolean(details.args[0] && details.args[0].trim()))
         ) {
           const tab = tabs.get(details.target.tabId);
           if (tab) {
@@ -492,6 +492,53 @@ test("fetchRenderedScore can submit a generic Sakura Checker search term before 
     assert.equal(result.score.kind, "text");
     assert.deepEqual(stub.requestSubmitCalls, ["Sample product title"]);
     assert.deepEqual(stub.submitCalls, []);
+  } finally {
+    stub.cleanup();
+  }
+});
+
+test("fetchRenderedScore prefers searchWord over urlSearchProductUrl when both are provided", async () => {
+  const stub = installChromeStub({
+    shouldSimulateSearchReload(value) {
+      return value === "Preferred search term";
+    },
+    scriptResponder(details, _callCount, submissionState) {
+      if (
+        Array.isArray(details.args) &&
+        details.args.length === 1 &&
+        details.args[0] === "Preferred search term"
+      ) {
+        return runSearchScript(details, {
+          requestSubmitCalls: submissionState.requestSubmitCalls,
+          submitCalls: submissionState.submitCalls,
+          hasSetActionSearchForm: true,
+        });
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "text",
+          value: "4.99",
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+  });
+
+  try {
+    const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B0D5RJ5BDX",
+      sourceUrl: "https://sakura-checker.jp/",
+      searchWord: "Preferred search term",
+      urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
+      timeoutMs: 200,
+      pollIntervalMs: 1,
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(stub.requestSubmitCalls, ["Preferred search term"]);
   } finally {
     stub.cleanup();
   }
