@@ -304,14 +304,14 @@
     };
   }
 
-  async function submitProductUrlSearch(tabId, amazonProductUrl, timeoutMs = DEFAULT_TAB_TIMEOUT_MS) {
+  async function submitSearch(tabId, searchWord, timeoutMs = DEFAULT_TAB_TIMEOUT_MS) {
     const reloadHandle = waitForTabReload(tabId, timeoutMs);
     let submissionResult = null;
 
     try {
       submissionResult = await executeTabFunction(
         tabId,
-        (productUrl) => {
+        (submittedSearchWord) => {
           const input = document.querySelector("#urlsearchForm");
           if (!input) {
             return {
@@ -320,8 +320,8 @@
             };
           }
 
-          input.value = productUrl;
-          input.setAttribute("value", productUrl);
+          input.value = submittedSearchWord;
+          input.setAttribute("value", submittedSearchWord);
 
           if (typeof self.setactionsearchForm === "function") {
             self.setactionsearchForm(true);
@@ -351,8 +351,8 @@
             message: "The Sakura Checker search form could not be submitted.",
           };
         },
-        [amazonProductUrl],
-        "Failed to submit the Sakura Checker URL search."
+        [searchWord],
+        "Failed to submit the Sakura Checker search."
       );
     } catch (error) {
       reloadHandle.cancel();
@@ -364,7 +364,7 @@
       throw new Error(
         submissionResult && submissionResult.message
           ? submissionResult.message
-          : "Could not submit the Sakura Checker URL search."
+          : "Could not submit the Sakura Checker search."
       );
     }
 
@@ -489,6 +489,7 @@
     loadTimeoutMs,
     renderTimeoutMs,
     pollIntervalMs,
+    searchWord,
     urlSearchProductUrl,
   }) {
     let tab = null;
@@ -508,8 +509,14 @@
       });
 
       await waitForTabComplete(tab.id, effectiveLoadTimeoutMs);
-      if (typeof urlSearchProductUrl === "string" && urlSearchProductUrl.trim()) {
-        await submitProductUrlSearch(tab.id, urlSearchProductUrl, effectiveLoadTimeoutMs);
+      const submittedSearchWord =
+        typeof searchWord === "string" && searchWord.trim()
+          ? searchWord.trim()
+          : typeof urlSearchProductUrl === "string" && urlSearchProductUrl.trim()
+            ? urlSearchProductUrl.trim()
+            : "";
+      if (submittedSearchWord) {
+        await submitSearch(tab.id, submittedSearchWord, effectiveLoadTimeoutMs);
       }
       const renderDeadline = Date.now() + effectiveRenderTimeoutMs;
       await injectParserWithRetry(tab.id, {

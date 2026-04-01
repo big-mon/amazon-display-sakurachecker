@@ -15,6 +15,14 @@
   const CACHE_PREFIX = "score:";
   const MIN_REQUEST_INTERVAL_MS = 2000;
   const MAX_REQUEST_JITTER_MS = 250;
+  const SAKURA_HOME_URL = "https://sakura-checker.jp/";
+  const BACKUP_ERROR_CODES = new Set([
+    "not_found",
+    "not_ready",
+    "not_available",
+    "parse_error",
+    "url_search_required",
+  ]);
 
   function encodeItemSearchWord(value) {
     const normalizedValue = String(value || "");
@@ -36,8 +44,16 @@
     return `https://sakura-checker.jp/search/${asin}/`;
   }
 
+  function buildHomeUrl() {
+    return SAKURA_HOME_URL;
+  }
+
   function buildAmazonProductUrl(asin) {
     return `https://www.amazon.co.jp/dp/${encodeURIComponent(String(asin || ""))}`;
+  }
+
+  function normalizeSearchWord(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
   }
 
   function resolveSakuraUrl(value) {
@@ -279,8 +295,34 @@
     return Boolean(renderedResult && renderedResult.code === "url_search_required");
   }
 
+  function shouldRetryWithBackupSearch(renderedResult) {
+    if (hasValidSuccessPayload(renderedResult)) {
+      return false;
+    }
+
+    if (!renderedResult || renderedResult.ok !== false) {
+      return true;
+    }
+
+    return BACKUP_ERROR_CODES.has(renderedResult.code);
+  }
+
+  async function attemptRenderedFetch(fetchRenderedScore, options, sourceUrl) {
+    try {
+      return await fetchRenderedScore(options);
+    } catch (error) {
+      return createFailure(
+        "network_error",
+        error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
+        sourceUrl
+      );
+    }
+  }
+
   async function fetchFreshScore({
     asin,
+    productTitle,
+    productUrl,
     fetchRenderedScore,
     nowImpl,
     randomImpl,
@@ -288,6 +330,8 @@
   }) {
     const requestUrl = buildSourceUrl(asin);
     const sourceUrl = buildDetailUrl(asin);
+    const normalizedProductTitle = normalizeSearchWord(productTitle);
+    const normalizedProductUrl = normalizeSearchWord(productUrl);
     let renderedResult = null;
 
     await requestCoordinator.waitForTurn({
@@ -296,33 +340,41 @@
       randomImpl,
     });
 
-    try {
-      renderedResult = await fetchRenderedScore({
+    renderedResult = await attemptRenderedFetch(
+      fetchRenderedScore,
+      {
         asin,
         sourceUrl: requestUrl,
-      });
-    } catch (error) {
-      return createFailure(
-        "network_error",
-        error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
+      },
+      sourceUrl
+    );
+
+    if (shouldRetryWithBackupSearch(renderedResult) && normalizedProductTitle) {
+      renderedResult = await attemptRenderedFetch(
+        fetchRenderedScore,
+        {
+          asin,
+          sourceUrl: buildHomeUrl(),
+          searchWord: normalizedProductTitle,
+        },
         sourceUrl
       );
     }
 
-    if (shouldRetryWithProductUrl(renderedResult)) {
-      try {
-        renderedResult = await fetchRenderedScore({
+    if (
+      shouldRetryWithProductUrl(renderedResult) ||
+      (shouldRetryWithBackupSearch(renderedResult) &&
+        (normalizedProductUrl || normalizedProductTitle))
+    ) {
+      renderedResult = await attemptRenderedFetch(
+        fetchRenderedScore,
+        {
           asin,
           sourceUrl,
-          urlSearchProductUrl: buildAmazonProductUrl(asin),
-        });
-      } catch (error) {
-        return createFailure(
-          "network_error",
-          error instanceof Error ? error.message : "Failed to inspect Sakura Checker.",
-          sourceUrl
-        );
-      }
+          urlSearchProductUrl: normalizedProductUrl || buildAmazonProductUrl(asin),
+        },
+        sourceUrl
+      );
     }
 
     if (!renderedResult || !renderedResult.ok) {
@@ -345,6 +397,8 @@
   async function checkSakuraScore({
     asin,
     forceRefresh = false,
+    productTitle,
+    productUrl,
     fetchRenderedScoreImpl,
     nowImpl,
     randomImpl,
@@ -380,6 +434,8 @@
       .enqueue(() =>
         fetchFreshScore({
           asin,
+          productTitle,
+          productUrl,
           fetchRenderedScore,
           nowImpl,
           randomImpl,
@@ -399,6 +455,7 @@
   return {
     buildAmazonProductUrl,
     buildDetailUrl,
+    buildHomeUrl,
     buildSourceUrl,
     checkSakuraScore,
     encodeItemSearchWord,

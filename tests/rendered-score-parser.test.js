@@ -54,6 +54,18 @@ test("extractRenderedScore reports when itemsearch asks for an Amazon product UR
   assert.equal(result.retryable, false);
 });
 
+test("extractRenderedScore falls back to the product detail page when itemsearch only exposes a detail link", () => {
+  const document = parseDocument(
+    fixtures.itemSearchDetailLinkOnlyHtml,
+    "https://sakura-checker.jp/itemsearch/?word=QjBENVJKNUJEWA=="
+  );
+  const result = renderedParser.extractRenderedScore(document, "B0D5RJ5BDX");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "url_search_required");
+  assert.equal(result.retryable, false);
+});
+
 test("extractRenderedScore prefers the richest rendered product card", () => {
   const document = parseDocument(fixtures.comparisonHeavyProductHtml);
   const result = renderedParser.extractRenderedScore(document);
