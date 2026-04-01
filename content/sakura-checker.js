@@ -20,6 +20,23 @@
       return window.AsinExtractor.extractProductASIN();
     }
 
+    getCurrentProductTitle() {
+      const titleNode = document.querySelector("#productTitle");
+      const rawTitle = titleNode ? titleNode.textContent : "";
+      const normalizedTitle = String(rawTitle || "").replace(/\s+/g, " ").trim();
+      return normalizedTitle || null;
+    }
+
+    getCurrentProductUrl(asin) {
+      const canonical = document.querySelector('link[rel="canonical"]');
+      const canonicalHref = canonical && canonical.getAttribute("href");
+      if (canonicalHref) {
+        return canonicalHref;
+      }
+
+      return asin ? `https://www.amazon.co.jp/dp/${asin}` : null;
+    }
+
     async refreshForCurrentPage({ forceRefresh = false } = {}) {
       if (!window.AsinExtractor || !window.UiDisplay) {
         return;
@@ -45,6 +62,8 @@
       this.pendingRefresh = false;
       this.pendingForceRefresh = false;
       window.UiDisplay.renderLoading(`https://sakura-checker.jp/search/${asin}/`);
+      const productTitle = this.getCurrentProductTitle();
+      const productUrl = this.getCurrentProductUrl(asin);
       let latestAsin = asin;
 
       try {
@@ -52,6 +71,8 @@
           action: "checkSakuraScore",
           asin,
           forceRefresh,
+          productTitle,
+          productUrl,
         });
 
         latestAsin = this.getCurrentPageAsin();

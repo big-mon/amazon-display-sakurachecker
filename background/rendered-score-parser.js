@@ -479,6 +479,23 @@
     const scoreText = normalizeText((scoreNode || {}).textContent || "");
     const scoreMatch = scoreText.match(/([0-9]+(?:\.[0-9]+)?)\s*\/\s*5/i);
     if (!scoreMatch) {
+      const detailLink = Array.from(matchingCandidate.querySelectorAll("a[href]")).find((anchor) => {
+        const href = String(anchor.getAttribute("href") || anchor.href || "");
+        if (!href || !/\/search\//i.test(href)) {
+          return false;
+        }
+
+        return !context.requestedAsinPattern || context.requestedAsinPattern.test(href);
+      });
+
+      if (detailLink) {
+        return createFailure(
+          "url_search_required",
+          "Sakura Checker requires opening the product detail page for this itemsearch result.",
+          false
+        );
+      }
+
       return null;
     }
 
@@ -632,7 +649,7 @@
 
   function buildFallbackResult(context) {
     const hasLoadingSignals = Boolean(
-      context.root.querySelector(".loader, .loading, .item-review-wrap, .sakuraBlock, #pagetop")
+      context.root.querySelector(".loader, .loading, .item-review-wrap, .sakuraBlock")
     );
 
     return createFailure(

@@ -7,7 +7,7 @@ function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function runUrlSearchScript(details, options = {}) {
+function runSearchScript(details, options = {}) {
   const requestSubmitCalls = options.requestSubmitCalls || [];
   const submitCalls = options.submitCalls || [];
   const hasInput = options.hasInput !== false;
@@ -15,7 +15,7 @@ function runUrlSearchScript(details, options = {}) {
   const hasSetActionSearchForm = Boolean(options.hasSetActionSearchForm);
   const hasRequestSubmit = options.hasRequestSubmit !== false;
   const hasSubmit = options.hasSubmit !== false;
-  const productUrl = Array.isArray(details.args) ? details.args[0] : null;
+  const searchWord = Array.isArray(details.args) ? details.args[0] : null;
 
   const input = hasInput
     ? {
@@ -29,12 +29,12 @@ function runUrlSearchScript(details, options = {}) {
     ? {
         requestSubmit: hasRequestSubmit
           ? () => {
-              requestSubmitCalls.push(productUrl);
+              requestSubmitCalls.push(searchWord);
             }
           : undefined,
         submit: hasSubmit
           ? () => {
-              submitCalls.push(productUrl);
+              submitCalls.push(searchWord);
             }
           : undefined,
       }
@@ -57,7 +57,7 @@ function runUrlSearchScript(details, options = {}) {
   global.self = hasSetActionSearchForm
     ? {
         setactionsearchForm() {
-          requestSubmitCalls.push(productUrl);
+          requestSubmitCalls.push(searchWord);
         },
       }
     : {};
@@ -83,6 +83,7 @@ function installChromeStub({
   parserInjectionResponder,
   scriptResponder,
   simulateUrlSearchReload = true,
+  shouldSimulateSearchReload,
 }) {
   const listeners = new Set();
   const tabs = new Map();
@@ -160,7 +161,9 @@ function installChromeStub({
           Array.isArray(details.args) &&
           details.args.length === 1 &&
           typeof details.args[0] === "string" &&
-          /amazon\.co\.jp\/dp\//.test(details.args[0])
+          (typeof shouldSimulateSearchReload === "function"
+            ? shouldSimulateSearchReload(details.args[0])
+            : Boolean(details.args[0] && details.args[0].trim()))
         ) {
           const tab = tabs.get(details.target.tabId);
           if (tab) {
@@ -404,7 +407,7 @@ test("fetchRenderedScore can trigger a Sakura Checker product URL search before 
         typeof details.args[0] === "string" &&
         /amazon\.co\.jp\/dp\/B0BJDY6D1W/.test(details.args[0])
       ) {
-        return runUrlSearchScript(details, {
+        return runSearchScript(details, {
           requestSubmitCalls: submissionState.requestSubmitCalls,
           submitCalls: submissionState.submitCalls,
           hasSetActionSearchForm: true,
@@ -441,6 +444,101 @@ test("fetchRenderedScore can trigger a Sakura Checker product URL search before 
     assert.deepEqual(stub.executeDetails[2].args, ["B0BJDY6D1W"]);
     assert.deepEqual(stub.requestSubmitCalls, ["https://www.amazon.co.jp/dp/B0BJDY6D1W"]);
     assert.deepEqual(stub.submitCalls, []);
+  } finally {
+    stub.cleanup();
+  }
+});
+
+test("fetchRenderedScore can submit a generic Sakura Checker search term before extracting", async () => {
+  const stub = installChromeStub({
+    shouldSimulateSearchReload(value) {
+      return value === "Sample product title";
+    },
+    scriptResponder(details, _callCount, submissionState) {
+      if (
+        Array.isArray(details.args) &&
+        details.args.length === 1 &&
+        details.args[0] === "Sample product title"
+      ) {
+        return runSearchScript(details, {
+          requestSubmitCalls: submissionState.requestSubmitCalls,
+          submitCalls: submissionState.submitCalls,
+          hasSetActionSearchForm: true,
+        });
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "text",
+          value: "4.99",
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+  });
+
+  try {
+    const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B0D5RJ5BDX",
+      sourceUrl: "https://sakura-checker.jp/",
+      searchWord: "Sample product title",
+      timeoutMs: 200,
+      pollIntervalMs: 1,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.score.kind, "text");
+    assert.deepEqual(stub.requestSubmitCalls, ["Sample product title"]);
+    assert.deepEqual(stub.submitCalls, []);
+  } finally {
+    stub.cleanup();
+  }
+});
+
+test("fetchRenderedScore prefers searchWord over urlSearchProductUrl when both are provided", async () => {
+  const stub = installChromeStub({
+    shouldSimulateSearchReload(value) {
+      return value === "Preferred search term";
+    },
+    scriptResponder(details, _callCount, submissionState) {
+      if (
+        Array.isArray(details.args) &&
+        details.args.length === 1 &&
+        details.args[0] === "Preferred search term"
+      ) {
+        return runSearchScript(details, {
+          requestSubmitCalls: submissionState.requestSubmitCalls,
+          submitCalls: submissionState.submitCalls,
+          hasSetActionSearchForm: true,
+        });
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "text",
+          value: "4.99",
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    },
+  });
+
+  try {
+    const result = await renderedScoreClient.fetchRenderedScore({
+      asin: "B0D5RJ5BDX",
+      sourceUrl: "https://sakura-checker.jp/",
+      searchWord: "Preferred search term",
+      urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
+      timeoutMs: 200,
+      pollIntervalMs: 1,
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(stub.requestSubmitCalls, ["Preferred search term"]);
   } finally {
     stub.cleanup();
   }
@@ -508,7 +606,7 @@ test("fetchRenderedScore falls back to form.submit when requestSubmit is unavail
         typeof details.args[0] === "string" &&
         /amazon\.co\.jp\/dp\/B0BJDY6D1W/.test(details.args[0])
       ) {
-        return runUrlSearchScript(details, {
+        return runSearchScript(details, {
           requestSubmitCalls: submissionState.requestSubmitCalls,
           submitCalls: submissionState.submitCalls,
           hasRequestSubmit: false,

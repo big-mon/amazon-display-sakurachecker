@@ -726,6 +726,36 @@ const itemSearchNoResultsHtml = `
   </html>
 `;
 
+const itemSearchDetailLinkOnlyHtml = `
+  <!DOCTYPE html>
+  <html lang="ja">
+    <body>
+      <div class="list-wrap marginsideless-sp">
+        <div name="searchitem" sakura="0">
+          <div class="is-flex list-box">
+            <div class="list-item-image">
+              <a href="https://www.amazon.co.jp/dp/B0D5RJ5BDX?tag=sakurachecker-22" target="_blank" class="linkimg"></a>
+            </div>
+            <div class="list-info">
+              <p class="item-name">
+                Product title
+                <a href="https://www.amazon.co.jp/dp/B0D5RJ5BDX?tag=sakurachecker-22" rel="nofollow" target="_blank">...</a>
+              </p>
+              <p class="item-info">
+                <span class="loader" style="height: 20px; width: 20px;"></span>
+              </p>
+              <p class="buttons">
+                <a href="https://www.amazon.co.jp/dp/B0D5RJ5BDX?tag=sakurachecker-22" class="button is-primary is-small" target="_blank">詳細を見る</a>
+                <a href="/search/B0D5RJ5BDX/" class="button is-small">サクラ度確認</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </body>
+  </html>
+`;
+
 const productAndModernHtml = sampleHtml.replace(
   "</body>",
   `
@@ -755,6 +785,7 @@ module.exports = {
   comparisonPrimaryItemInfo,
   comparisonSecondaryItemInfo,
   htmlWithInjectedScore,
+  itemSearchDetailLinkOnlyHtml,
   itemSearchNoResultsHtml,
   itemSearchResultHtml,
   injectedDecodedScript,
