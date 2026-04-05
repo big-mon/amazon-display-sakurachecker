@@ -537,7 +537,7 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN", asyn
   assert.deepEqual(second.score, first.score);
 });
 
-test("checkSakuraScore deduplicates concurrent requests for the same ASIN even when product URLs differ", async () => {
+test("checkSakuraScore deduplicates concurrent requests for the same ASIN even when product URLs differ and URL fallback is required", async () => {
   apiClient.__testing.reset();
   const startedRequests = [];
   const resolvers = [];
@@ -573,8 +573,28 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN even w
 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(resolvers.length, 1);
+  assert.equal(startedRequests.length, 1);
 
   resolvers[0]({
+    ok: false,
+    code: "parse_error",
+    message: "Could not extract a rendered Sakura Checker score.",
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(resolvers.length, 2);
+  assert.equal(startedRequests.length, 2);
+  assert.equal(
+    startedRequests.filter((request) => request.urlSearchProductUrl).length,
+    1
+  );
+  assert.deepEqual(startedRequests[1], {
+    asin: "B0D5RJ5BDX",
+    urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
+    sourceUrl: "https://sakura-checker.jp/search/B0D5RJ5BDX/",
+  });
+
+  resolvers[1]({
     ok: true,
     score: {
       kind: "text",
@@ -587,9 +607,9 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN even w
   const [first, second] = await Promise.all([firstPromise, secondPromise]);
   assert.equal(first.ok, true);
   assert.equal(second.ok, true);
-  assert.equal(startedRequests.length, 1);
   assert.deepEqual(startedRequests.map((request) => request.sourceUrl), [
     "https://sakura-checker.jp/itemsearch/?word=QjBENVJKNUJEWA==",
+    "https://sakura-checker.jp/search/B0D5RJ5BDX/",
   ]);
 });
 

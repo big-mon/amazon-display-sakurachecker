@@ -15,26 +15,34 @@ function runSearchScript(details, options = {}) {
   const hasSetActionSearchForm = Boolean(options.hasSetActionSearchForm);
   const hasRequestSubmit = options.hasRequestSubmit !== false;
   const hasSubmit = options.hasSubmit !== false;
-  const submittedValue = Array.isArray(details.args) ? details.args[0] : null;
 
   const input = hasInput
     ? {
+        attributes: new Map(),
         value: "",
-        setAttribute(_name, value) {
-          this.value = value;
+        getAttribute(name) {
+          return this.attributes.has(name) ? this.attributes.get(name) : null;
+        },
+        setAttribute(name, value) {
+          const normalizedValue = String(value);
+          this.attributes.set(name, normalizedValue);
+          if (name === "value") {
+            this.value = normalizedValue;
+          }
         },
       }
     : null;
+  const readInputValue = () => (input ? input.value : null);
   const form = hasForm
     ? {
         requestSubmit: hasRequestSubmit
           ? () => {
-              requestSubmitCalls.push(submittedValue);
+              requestSubmitCalls.push(readInputValue());
             }
           : undefined,
         submit: hasSubmit
           ? () => {
-              submitCalls.push(submittedValue);
+              submitCalls.push(readInputValue());
             }
           : undefined,
       }
@@ -57,7 +65,7 @@ function runSearchScript(details, options = {}) {
   global.self = hasSetActionSearchForm
     ? {
         setactionsearchForm() {
-          requestSubmitCalls.push(submittedValue);
+          requestSubmitCalls.push(readInputValue());
         },
       }
     : {};
