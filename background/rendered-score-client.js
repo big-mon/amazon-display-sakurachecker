@@ -304,14 +304,14 @@
     };
   }
 
-  async function submitSearch(tabId, searchWord, timeoutMs = DEFAULT_TAB_TIMEOUT_MS) {
+  async function submitUrlSearch(tabId, productUrl, timeoutMs = DEFAULT_TAB_TIMEOUT_MS) {
     const reloadHandle = waitForTabReload(tabId, timeoutMs);
     let submissionResult = null;
 
     try {
       submissionResult = await executeTabFunction(
         tabId,
-        (submittedSearchWord) => {
+        (submittedProductUrl) => {
           const input = document.querySelector("#urlsearchForm");
           if (!input) {
             return {
@@ -320,8 +320,8 @@
             };
           }
 
-          input.value = submittedSearchWord;
-          input.setAttribute("value", submittedSearchWord);
+          input.value = submittedProductUrl;
+          input.setAttribute("value", submittedProductUrl);
 
           if (typeof self.setactionsearchForm === "function") {
             self.setactionsearchForm(true);
@@ -351,7 +351,7 @@
             message: "The Sakura Checker search form could not be submitted.",
           };
         },
-        [searchWord],
+        [productUrl],
         "Failed to submit the Sakura Checker search."
       );
     } catch (error) {
@@ -489,7 +489,6 @@
     loadTimeoutMs,
     renderTimeoutMs,
     pollIntervalMs,
-    searchWord,
     urlSearchProductUrl,
   }) {
     let tab = null;
@@ -509,14 +508,12 @@
       });
 
       await waitForTabComplete(tab.id, effectiveLoadTimeoutMs);
-      const submittedSearchWord =
-        typeof searchWord === "string" && searchWord.trim()
-          ? searchWord.trim()
-          : typeof urlSearchProductUrl === "string" && urlSearchProductUrl.trim()
-            ? urlSearchProductUrl.trim()
-            : "";
-      if (submittedSearchWord) {
-        await submitSearch(tab.id, submittedSearchWord, effectiveLoadTimeoutMs);
+      const normalizedProductUrl =
+        typeof urlSearchProductUrl === "string" && urlSearchProductUrl.trim()
+          ? urlSearchProductUrl.trim()
+          : "";
+      if (normalizedProductUrl) {
+        await submitUrlSearch(tab.id, normalizedProductUrl, effectiveLoadTimeoutMs);
       }
       const renderDeadline = Date.now() + effectiveRenderTimeoutMs;
       await injectParserWithRetry(tab.id, {

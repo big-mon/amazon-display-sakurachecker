@@ -15,7 +15,7 @@ function runSearchScript(details, options = {}) {
   const hasSetActionSearchForm = Boolean(options.hasSetActionSearchForm);
   const hasRequestSubmit = options.hasRequestSubmit !== false;
   const hasSubmit = options.hasSubmit !== false;
-  const searchWord = Array.isArray(details.args) ? details.args[0] : null;
+  const submittedValue = Array.isArray(details.args) ? details.args[0] : null;
 
   const input = hasInput
     ? {
@@ -29,12 +29,12 @@ function runSearchScript(details, options = {}) {
     ? {
         requestSubmit: hasRequestSubmit
           ? () => {
-              requestSubmitCalls.push(searchWord);
+              requestSubmitCalls.push(submittedValue);
             }
           : undefined,
         submit: hasSubmit
           ? () => {
-              submitCalls.push(searchWord);
+              submitCalls.push(submittedValue);
             }
           : undefined,
       }
@@ -57,7 +57,7 @@ function runSearchScript(details, options = {}) {
   global.self = hasSetActionSearchForm
     ? {
         setactionsearchForm() {
-          requestSubmitCalls.push(searchWord);
+          requestSubmitCalls.push(submittedValue);
         },
       }
     : {};
@@ -444,101 +444,6 @@ test("fetchRenderedScore can trigger a Sakura Checker product URL search before 
     assert.deepEqual(stub.executeDetails[2].args, ["B0BJDY6D1W"]);
     assert.deepEqual(stub.requestSubmitCalls, ["https://www.amazon.co.jp/dp/B0BJDY6D1W"]);
     assert.deepEqual(stub.submitCalls, []);
-  } finally {
-    stub.cleanup();
-  }
-});
-
-test("fetchRenderedScore can submit a generic Sakura Checker search term before extracting", async () => {
-  const stub = installChromeStub({
-    shouldSimulateSearchReload(value) {
-      return value === "Sample product title";
-    },
-    scriptResponder(details, _callCount, submissionState) {
-      if (
-        Array.isArray(details.args) &&
-        details.args.length === 1 &&
-        details.args[0] === "Sample product title"
-      ) {
-        return runSearchScript(details, {
-          requestSubmitCalls: submissionState.requestSubmitCalls,
-          submitCalls: submissionState.submitCalls,
-          hasSetActionSearchForm: true,
-        });
-      }
-
-      return {
-        ok: true,
-        score: {
-          kind: "text",
-          value: "4.99",
-          suffix: "/5",
-        },
-        verdict: null,
-      };
-    },
-  });
-
-  try {
-    const result = await renderedScoreClient.fetchRenderedScore({
-      asin: "B0D5RJ5BDX",
-      sourceUrl: "https://sakura-checker.jp/",
-      searchWord: "Sample product title",
-      timeoutMs: 200,
-      pollIntervalMs: 1,
-    });
-
-    assert.equal(result.ok, true);
-    assert.equal(result.score.kind, "text");
-    assert.deepEqual(stub.requestSubmitCalls, ["Sample product title"]);
-    assert.deepEqual(stub.submitCalls, []);
-  } finally {
-    stub.cleanup();
-  }
-});
-
-test("fetchRenderedScore prefers searchWord over urlSearchProductUrl when both are provided", async () => {
-  const stub = installChromeStub({
-    shouldSimulateSearchReload(value) {
-      return value === "Preferred search term";
-    },
-    scriptResponder(details, _callCount, submissionState) {
-      if (
-        Array.isArray(details.args) &&
-        details.args.length === 1 &&
-        details.args[0] === "Preferred search term"
-      ) {
-        return runSearchScript(details, {
-          requestSubmitCalls: submissionState.requestSubmitCalls,
-          submitCalls: submissionState.submitCalls,
-          hasSetActionSearchForm: true,
-        });
-      }
-
-      return {
-        ok: true,
-        score: {
-          kind: "text",
-          value: "4.99",
-          suffix: "/5",
-        },
-        verdict: null,
-      };
-    },
-  });
-
-  try {
-    const result = await renderedScoreClient.fetchRenderedScore({
-      asin: "B0D5RJ5BDX",
-      sourceUrl: "https://sakura-checker.jp/",
-      searchWord: "Preferred search term",
-      urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
-      timeoutMs: 200,
-      pollIntervalMs: 1,
-    });
-
-    assert.equal(result.ok, true);
-    assert.deepEqual(stub.requestSubmitCalls, ["Preferred search term"]);
   } finally {
     stub.cleanup();
   }

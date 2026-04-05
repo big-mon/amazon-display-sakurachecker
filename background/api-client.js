@@ -15,7 +15,6 @@
   const CACHE_PREFIX = "score:";
   const MIN_REQUEST_INTERVAL_MS = 2000;
   const MAX_REQUEST_JITTER_MS = 250;
-  const SAKURA_HOME_URL = "https://sakura-checker.jp/";
   const BACKUP_ERROR_CODES = new Set([
     "not_found",
     "not_ready",
@@ -44,10 +43,6 @@
     return `https://sakura-checker.jp/search/${asin}/`;
   }
 
-  function buildHomeUrl() {
-    return SAKURA_HOME_URL;
-  }
-
   function buildAmazonProductUrl(asin) {
     return `https://www.amazon.co.jp/dp/${encodeURIComponent(String(asin || ""))}`;
   }
@@ -56,11 +51,9 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
-  function buildInFlightRequestKey({ asin, productTitle, productUrl }) {
+  function buildInFlightRequestKey({ asin }) {
     return JSON.stringify({
       asin: String(asin || ""),
-      productTitle: normalizeSearchWord(productTitle),
-      productUrl: normalizeSearchWord(productUrl),
     });
   }
 
@@ -335,7 +328,6 @@
 
   async function fetchFreshScore({
     asin,
-    productTitle,
     productUrl,
     fetchRenderedScore,
     nowImpl,
@@ -344,7 +336,6 @@
   }) {
     const requestUrl = buildSourceUrl(asin);
     const sourceUrl = buildDetailUrl(asin);
-    const normalizedProductTitle = normalizeSearchWord(productTitle);
     const normalizedProductUrl = normalizeSearchWord(productUrl);
     let renderedResult = null;
 
@@ -363,22 +354,9 @@
       sourceUrl
     );
 
-    if (shouldRetryWithBackupSearch(renderedResult) && normalizedProductTitle) {
-      renderedResult = await attemptRenderedFetch(
-        fetchRenderedScore,
-        {
-          asin,
-          sourceUrl: buildHomeUrl(),
-          searchWord: normalizedProductTitle,
-        },
-        sourceUrl
-      );
-    }
-
     if (
       shouldRetryWithProductUrl(renderedResult) ||
-      (shouldRetryWithBackupSearch(renderedResult) &&
-        (normalizedProductUrl || normalizedProductTitle))
+      shouldRetryWithBackupSearch(renderedResult)
     ) {
       renderedResult = await attemptRenderedFetch(
         fetchRenderedScore,
@@ -411,7 +389,6 @@
   async function checkSakuraScore({
     asin,
     forceRefresh = false,
-    productTitle,
     productUrl,
     fetchRenderedScoreImpl,
     nowImpl,
@@ -441,8 +418,6 @@
         : RenderedScoreClient.fetchRenderedScore;
     const requestKey = buildInFlightRequestKey({
       asin,
-      productTitle,
-      productUrl,
     });
 
     if (inFlightRequests.has(requestKey)) {
@@ -453,7 +428,6 @@
       .enqueue(() =>
         fetchFreshScore({
           asin,
-          productTitle,
           productUrl,
           fetchRenderedScore,
           nowImpl,
@@ -474,7 +448,6 @@
   return {
     buildAmazonProductUrl,
     buildDetailUrl,
-    buildHomeUrl,
     buildSourceUrl,
     checkSakuraScore,
     encodeItemSearchWord,
