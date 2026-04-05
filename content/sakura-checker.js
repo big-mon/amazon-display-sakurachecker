@@ -20,13 +20,6 @@
       return window.AsinExtractor.extractProductASIN();
     }
 
-    getCurrentProductTitle() {
-      const titleNode = document.querySelector("#productTitle");
-      const rawTitle = titleNode ? titleNode.textContent : "";
-      const normalizedTitle = String(rawTitle || "").replace(/\s+/g, " ").trim();
-      return normalizedTitle || null;
-    }
-
     getCurrentProductUrl(asin) {
       const canonical = document.querySelector('link[rel="canonical"]');
       const canonicalHref = canonical && canonical.getAttribute("href");
@@ -62,7 +55,6 @@
       this.pendingRefresh = false;
       this.pendingForceRefresh = false;
       window.UiDisplay.renderLoading(`https://sakura-checker.jp/search/${asin}/`);
-      const productTitle = this.getCurrentProductTitle();
       const productUrl = this.getCurrentProductUrl(asin);
       let latestAsin = asin;
 
@@ -71,7 +63,6 @@
           action: "checkSakuraScore",
           asin,
           forceRefresh,
-          productTitle,
           productUrl,
         });
 

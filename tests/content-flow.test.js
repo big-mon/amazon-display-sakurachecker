@@ -431,10 +431,6 @@ test("AsinExtractor still detects standard product URLs under the music section"
 
 test("SakuraChecker refresh shows loading first and then renders fetched score images", async () => {
   const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
-  const productTitle = document.createElement("span");
-  productTitle.id = "productTitle";
-  productTitle.textContent = "Sample product title";
-  document.body.appendChild(productTitle);
   let resolveResponse = null;
   const chrome = {
     runtime: {
@@ -458,7 +454,6 @@ test("SakuraChecker refresh shows loading first and then renders fetched score i
   assert.equal(loadingRoot.dataset.state, "loading");
   assert.ok(resolveResponse);
   assert.equal(resolveResponse.payload.asin, "B095JGJCC7");
-  assert.equal(resolveResponse.payload.productTitle, "Sample product title");
   assert.equal(
     resolveResponse.payload.productUrl,
     "https://www.amazon.co.jp/dp/B095JGJCC7"

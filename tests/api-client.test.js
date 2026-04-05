@@ -295,13 +295,12 @@ test("checkSakuraScore falls back to an Amazon product URL search when itemsearc
   });
 });
 
-test("checkSakuraScore retries with the product title before the product URL fallback", async () => {
+test("checkSakuraScore falls back to a product URL search when itemsearch requires it even if a product title is available", async () => {
   apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
     asin: "B0D5RJ5BDX",
-    productTitle: "Sample product title",
     productUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
     forceRefresh: true,
     fetchRenderedScoreImpl: async (options) => {
@@ -342,25 +341,24 @@ test("checkSakuraScore retries with the product title before the product URL fal
     },
     {
       asin: "B0D5RJ5BDX",
-      sourceUrl: "https://sakura-checker.jp/",
-      searchWord: "Sample product title",
+      sourceUrl: "https://sakura-checker.jp/search/B0D5RJ5BDX/",
+      urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
     },
   ]);
 });
 
-test("checkSakuraScore falls back to a product URL search after the product title backup fails", async () => {
+test("checkSakuraScore falls back to a product URL search after an itemsearch parse failure", async () => {
   apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
     asin: "B0D5RJ5BDX",
-    productTitle: "Sample product title",
     productUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
     forceRefresh: true,
     fetchRenderedScoreImpl: async (options) => {
       calls.push(options);
 
-      if (calls.length < 3) {
+      if (calls.length < 2) {
         return {
           ok: false,
           code: "parse_error",
@@ -383,26 +381,20 @@ test("checkSakuraScore falls back to a product URL search after the product titl
   });
 
   assert.equal(result.ok, true);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
   assert.deepEqual(calls[1], {
-    asin: "B0D5RJ5BDX",
-    sourceUrl: "https://sakura-checker.jp/",
-    searchWord: "Sample product title",
-  });
-  assert.deepEqual(calls[2], {
     asin: "B0D5RJ5BDX",
     sourceUrl: "https://sakura-checker.jp/search/B0D5RJ5BDX/",
     urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
   });
 });
 
-test("checkSakuraScore skips the title backup when productTitle is empty and uses the provided product URL", async () => {
+test("checkSakuraScore uses the provided product URL when itemsearch parsing fails", async () => {
   apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
     asin: "B0D5RJ5BDX",
-    productTitle: "",
     productUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
     forceRefresh: true,
     fetchRenderedScoreImpl: async (options) => {
@@ -545,15 +537,14 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN", asyn
   assert.deepEqual(second.score, first.score);
 });
 
-test("checkSakuraScore does not deduplicate concurrent requests for the same ASIN when fallback inputs differ", async () => {
+test("checkSakuraScore deduplicates concurrent requests for the same ASIN even when product URLs differ and URL fallback is required", async () => {
   apiClient.__testing.reset();
   const startedRequests = [];
   const resolvers = [];
 
-  const fetchRenderedScoreImpl = async ({ asin, searchWord, urlSearchProductUrl, sourceUrl }) => {
+  const fetchRenderedScoreImpl = async ({ asin, urlSearchProductUrl, sourceUrl }) => {
     startedRequests.push({
       asin,
-      searchWord: searchWord || null,
       urlSearchProductUrl: urlSearchProductUrl || null,
       sourceUrl,
     });
@@ -565,7 +556,6 @@ test("checkSakuraScore does not deduplicate concurrent requests for the same ASI
 
   const firstPromise = apiClient.checkSakuraScore({
     asin: "B0D5RJ5BDX",
-    productTitle: "",
     productUrl: "",
     forceRefresh: true,
     fetchRenderedScoreImpl,
@@ -574,7 +564,6 @@ test("checkSakuraScore does not deduplicate concurrent requests for the same ASI
   });
   const secondPromise = apiClient.checkSakuraScore({
     asin: "B0D5RJ5BDX",
-    productTitle: "Sample product title",
     productUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
     forceRefresh: true,
     fetchRenderedScoreImpl,
@@ -584,6 +573,7 @@ test("checkSakuraScore does not deduplicate concurrent requests for the same ASI
 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(resolvers.length, 1);
+  assert.equal(startedRequests.length, 1);
 
   resolvers[0]({
     ok: false,
@@ -593,6 +583,16 @@ test("checkSakuraScore does not deduplicate concurrent requests for the same ASI
 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(resolvers.length, 2);
+  assert.equal(startedRequests.length, 2);
+  assert.equal(
+    startedRequests.filter((request) => request.urlSearchProductUrl).length,
+    1
+  );
+  assert.deepEqual(startedRequests[1], {
+    asin: "B0D5RJ5BDX",
+    urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
+    sourceUrl: "https://sakura-checker.jp/search/B0D5RJ5BDX/",
+  });
 
   resolvers[1]({
     ok: true,
@@ -605,12 +605,11 @@ test("checkSakuraScore does not deduplicate concurrent requests for the same ASI
   });
 
   const [first, second] = await Promise.all([firstPromise, secondPromise]);
-  assert.equal(first.ok, false);
+  assert.equal(first.ok, true);
   assert.equal(second.ok, true);
-  assert.equal(startedRequests.length, 2);
   assert.deepEqual(startedRequests.map((request) => request.sourceUrl), [
     "https://sakura-checker.jp/itemsearch/?word=QjBENVJKNUJEWA==",
-    "https://sakura-checker.jp/itemsearch/?word=QjBENVJKNUJEWA==",
+    "https://sakura-checker.jp/search/B0D5RJ5BDX/",
   ]);
 });
 

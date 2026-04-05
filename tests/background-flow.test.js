@@ -102,14 +102,13 @@ test("background defaults forceRefresh to false when omitted", async () => {
   assert.equal(responsePayload.cached, true);
 });
 
-test("background forwards product title and product URL to ApiClient", async () => {
+test("background forwards the product URL to ApiClient", async () => {
   const { apiCalls, onMessage } = loadBackgroundContext();
 
   onMessage(
     {
       action: "checkSakuraScore",
       asin: "B095JGJCC7",
-      productTitle: "Sample product title",
       productUrl: "https://www.amazon.co.jp/dp/B095JGJCC7",
     },
     null,
@@ -119,6 +118,5 @@ test("background forwards product title and product URL to ApiClient", async () 
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(apiCalls.length, 1);
-  assert.equal(apiCalls[0].productTitle, "Sample product title");
   assert.equal(apiCalls[0].productUrl, "https://www.amazon.co.jp/dp/B095JGJCC7");
 });
