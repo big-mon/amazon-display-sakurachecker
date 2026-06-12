@@ -206,6 +206,94 @@
     );
   }
 
+  function getComputedStyleForNode(context, node) {
+    const view =
+      (context.root.defaultView || null) ||
+      (context.root.ownerDocument && context.root.ownerDocument.defaultView) ||
+      (typeof window !== "undefined" ? window : null);
+
+    if (!view || typeof view.getComputedStyle !== "function") {
+      return null;
+    }
+
+    try {
+      return view.getComputedStyle(node);
+    } catch {
+      return null;
+    }
+  }
+
+  function isHiddenByInlineStyle(node) {
+    const styleText = String(node.getAttribute("style") || "");
+    return /(?:^|;)\s*display\s*:\s*none\s*(?:;|$)/i.test(styleText);
+  }
+
+  function getVisibleChildItemInfos(context, reviewWrap) {
+    const itemInfos = getDirectChildItemInfos(reviewWrap);
+    if (itemInfos.length < 2) {
+      return null;
+    }
+
+    let detectedHiddenItem = false;
+    const visibleItemInfos = itemInfos.filter((itemInfo) => {
+      if (itemInfo.hidden || isHiddenByInlineStyle(itemInfo)) {
+        detectedHiddenItem = true;
+        return false;
+      }
+
+      const style = getComputedStyleForNode(context, itemInfo);
+      if (!style) {
+        return true;
+      }
+
+      const isHidden =
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        style.visibility === "collapse" ||
+        style.opacity === "0";
+      if (isHidden) {
+        detectedHiddenItem = true;
+        return false;
+      }
+
+      return true;
+    });
+
+    if (!detectedHiddenItem || visibleItemInfos.length === itemInfos.length) {
+      return null;
+    }
+
+    return visibleItemInfos;
+  }
+
+  function hasLegacyScoreSignals(context, itemInfo) {
+    return Boolean(
+      itemInfo &&
+        (getRatingImages(context, itemInfo.querySelectorAll("p.item-rating")).length ||
+          itemInfo.querySelector(".item-rv-score"))
+    );
+  }
+
+  function hasPendingVisibleRequestedLegacyCard(context) {
+    if (!context.requestedAsinPattern) {
+      return false;
+    }
+
+    return Array.from(context.root.querySelectorAll(".item-review-wrap")).some((reviewWrap) => {
+      if (!reviewWrapMatchesRequestedAsin(context, reviewWrap)) {
+        return false;
+      }
+
+      const itemInfos = getDirectChildItemInfos(reviewWrap);
+      if (itemInfos.length < 2 || !itemInfos.some((itemInfo) => hasLegacyScoreSignals(context, itemInfo))) {
+        return false;
+      }
+
+      const visibleItemInfos = getVisibleChildItemInfos(context, reviewWrap);
+      return Array.isArray(visibleItemInfos) && visibleItemInfos.length === 0;
+    });
+  }
+
   function reviewWrapMatchesRequestedAsin(context, reviewWrap) {
     if (!context.requestedAsinPattern || !reviewWrap) {
       return false;
@@ -367,12 +455,18 @@
         const ambiguousWrapCandidates = matchingWraps.flatMap((reviewWrap) =>
           getDirectChildItemInfos(reviewWrap)
         );
+        const visibleWrapCandidates = matchingWraps.flatMap((reviewWrap) =>
+          getVisibleChildItemInfos(context, reviewWrap) || []
+        );
         const singleCardWrapCandidates = matchingWraps
           .map((reviewWrap) => getDirectChildItemInfos(reviewWrap))
           .filter((itemInfos) => itemInfos.length === 1)
           .map((itemInfos) => itemInfos[0]);
 
-        if (singleCardWrapCandidates.length) {
+        if (visibleWrapCandidates.length) {
+          matchingCandidates = visibleWrapCandidates;
+          scopedCandidates = visibleWrapCandidates;
+        } else if (singleCardWrapCandidates.length) {
           matchingCandidates = singleCardWrapCandidates;
           scopedCandidates = singleCardWrapCandidates;
         } else if (allowAmbiguousMatches && ambiguousWrapCandidates.length) {
@@ -694,6 +788,14 @@
     const legacy = extractLegacyScore(context);
     if (legacy && legacy.ok) {
       return legacy;
+    }
+
+    if (hasPendingVisibleRequestedLegacyCard(context)) {
+      return createFailure(
+        "not_ready",
+        "Rendered Sakura Checker product score card is not visible yet.",
+        true
+      );
     }
 
     const modern = extractModernScore(context);

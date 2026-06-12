@@ -389,6 +389,183 @@ test("checkSakuraScore falls back to a product URL search after an itemsearch pa
   });
 });
 
+test("checkSakuraScore retries ASIN itemsearch after an ambiguous product URL search", async () => {
+  apiClient.__testing.reset();
+  const calls = [];
+
+  const result = await apiClient.checkSakuraScore({
+    asin: "B0FPWXKNCK",
+    productUrl: "https://www.amazon.co.jp/dp/B0FPWXKNCK",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async (options) => {
+      calls.push(options);
+
+      if (calls.length === 1) {
+        return {
+          ok: false,
+          code: "url_search_required",
+          message: "Sakura Checker asked for an Amazon product URL search.",
+        };
+      }
+
+      if (calls.length === 2) {
+        return {
+          ok: false,
+          code: "parse_error",
+          message: "Could not locate the requested product in Sakura Checker results.",
+        };
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "text",
+          value: "4.99",
+          suffix: "/5",
+        },
+        verdict: {
+          kind: "text-verdict",
+          lines: ["蜷域ｼ", "繧ｵ繧ｯ繝ｩ蠎ｦ 0%"],
+        },
+      };
+    },
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "text");
+  assert.equal(result.score.value, "4.99");
+  assert.deepEqual(calls, [
+    {
+      asin: "B0FPWXKNCK",
+      sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjBGUFdYS05DSw==",
+    },
+    {
+      asin: "B0FPWXKNCK",
+      sourceUrl: "https://sakura-checker.jp/search/B0FPWXKNCK/",
+      urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0FPWXKNCK",
+    },
+    {
+      asin: "B0FPWXKNCK",
+      sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjBGUFdYS05DSw==",
+    },
+  ]);
+});
+
+test("checkSakuraScore prefers a detail page score after product URL search returns only a percent score", async () => {
+  apiClient.__testing.reset();
+  const calls = [];
+
+  const result = await apiClient.checkSakuraScore({
+    asin: "B0FPWXKNCK",
+    productUrl: "https://www.amazon.co.jp/dp/B0FPWXKNCK",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async (options) => {
+      calls.push(options);
+
+      if (calls.length === 1) {
+        return {
+          ok: false,
+          code: "url_search_required",
+          message: "Sakura Checker asked for an Amazon product URL search.",
+        };
+      }
+
+      if (calls.length === 2) {
+        return {
+          ok: true,
+          score: {
+            kind: "visual-image",
+            images: [{ src: "data:image/png;base64,PERCENT", alt: "9" }],
+            suffix: "%",
+          },
+          verdict: null,
+        };
+      }
+
+      assert.equal(options.sourceUrl, "https://sakura-checker.jp/search/B0FPWXKNCK/");
+      assert.equal(options.urlSearchProductUrl, undefined);
+      return {
+        ok: true,
+        score: {
+          kind: "text",
+          value: "4.99",
+          suffix: "/5",
+        },
+        verdict: {
+          kind: "text-verdict",
+          lines: ["蜷域ｼ", "繧ｵ繧ｯ繝ｩ蠎ｦ 9%"],
+        },
+      };
+    },
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "text");
+  assert.equal(result.score.value, "4.99");
+  assert.equal(result.score.suffix, "/5");
+  assert.deepEqual(calls.map((call) => call.sourceUrl), [
+    "https://sakura-checker.jp/itemsearch/?word=QjBGUFdYS05DSw==",
+    "https://sakura-checker.jp/search/B0FPWXKNCK/",
+    "https://sakura-checker.jp/search/B0FPWXKNCK/",
+  ]);
+});
+
+test("checkSakuraScore keeps a percent score when the detail page retry fails", async () => {
+  apiClient.__testing.reset();
+  const calls = [];
+
+  const result = await apiClient.checkSakuraScore({
+    asin: "B0MODERN42",
+    productUrl: "https://www.amazon.co.jp/dp/B0MODERN42",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async (options) => {
+      calls.push(options);
+
+      if (calls.length === 1) {
+        return {
+          ok: false,
+          code: "url_search_required",
+          message: "Sakura Checker asked for an Amazon product URL search.",
+        };
+      }
+
+      if (calls.length === 2) {
+        return {
+          ok: true,
+          score: {
+            kind: "visual-image",
+            images: [{ src: "data:image/png;base64,PERCENT", alt: "safe" }],
+            suffix: "%",
+          },
+          verdict: null,
+        };
+      }
+
+      return {
+        ok: false,
+        code: "parse_error",
+        message: "Could not locate a rendered Sakura Checker score.",
+      };
+    },
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "visual-image");
+  assert.equal(result.score.suffix, "%");
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map((call) => call.sourceUrl), [
+    "https://sakura-checker.jp/itemsearch/?word=QjBNT0RFUk40Mg==",
+    "https://sakura-checker.jp/search/B0MODERN42/",
+    "https://sakura-checker.jp/search/B0MODERN42/",
+  ]);
+});
+
 test("checkSakuraScore uses the provided product URL when itemsearch parsing fails", async () => {
   apiClient.__testing.reset();
   const calls = [];
@@ -468,7 +645,7 @@ test("checkSakuraScore returns the fallback error when URL-search retry also fai
   assert.equal(calls.length, 2);
 });
 
-test("checkSakuraScore stops after one fallback when URL-search retry still requires a product URL", async () => {
+test("checkSakuraScore stops after the ASIN itemsearch retry still requires a product URL", async () => {
   apiClient.__testing.reset();
   const calls = [];
 
@@ -490,7 +667,12 @@ test("checkSakuraScore stops after one fallback when URL-search retry still requ
 
   assert.equal(result.ok, false);
   assert.equal(result.code, "url_search_required");
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map((call) => call.sourceUrl), [
+    "https://sakura-checker.jp/itemsearch/?word=QjBCSkRZNkQxVw==",
+    "https://sakura-checker.jp/search/B0BJDY6D1W/",
+    "https://sakura-checker.jp/itemsearch/?word=QjBCSkRZNkQxVw==",
+  ]);
 });
 
 test("checkSakuraScore deduplicates concurrent requests for the same ASIN", async () => {
