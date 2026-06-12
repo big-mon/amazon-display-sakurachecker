@@ -18,6 +18,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {
     "archiver": "^8.0.0",
     "linkedom": "^0.18.12",

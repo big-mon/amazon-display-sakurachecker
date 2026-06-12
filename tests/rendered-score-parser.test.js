@@ -228,6 +228,44 @@ test("extractRenderedScore waits for hidden requested legacy cards before using 
   assert.equal(result.retryable, true);
 });
 
+test("extractRenderedScore waits when the only requested legacy card is hidden", () => {
+  const hiddenTargetImage = fixtures.sampleImageTag.replace(
+    'alt="score"',
+    'alt="hidden-target"'
+  );
+  const document = parseDocument(`
+    <!DOCTYPE html>
+    <html lang="ja">
+      <body>
+        <div class="item-review-wrap">
+          <div class="item-image">
+            <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22"></a>
+          </div>
+          <div class="item-info hidden-target" style="display: none;">
+            <div class="item-review-box">
+              <div class="item-review-after">
+                <p class="item-rating"><span>${hiddenTargetImage}</span>/5</p>
+              </div>
+              <div class="item-review-level">
+                <p class="item-rv-score">Hidden target score</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sakuraBlock">
+          ${fixtures.modernSakuraAlertMarkup}
+          ${fixtures.modernSakuraRatingMarkup}
+        </div>
+      </body>
+    </html>
+  `);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_ready");
+  assert.equal(result.retryable, true);
+});
+
 test("extractRenderedScore falls back to the modern summary when wrapper-scoped legacy siblings are ambiguous", () => {
   const document = parseDocument(fixtures.ambiguousWrapperWithModernHtml);
   const result = renderedParser.extractRenderedScore(document, "B095JGJCC7");

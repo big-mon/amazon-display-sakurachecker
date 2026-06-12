@@ -230,7 +230,7 @@
 
   function getVisibleChildItemInfos(context, reviewWrap) {
     const itemInfos = getDirectChildItemInfos(reviewWrap);
-    if (itemInfos.length < 2) {
+    if (!itemInfos.length) {
       return null;
     }
 
@@ -285,7 +285,7 @@
       }
 
       const itemInfos = getDirectChildItemInfos(reviewWrap);
-      if (itemInfos.length < 2 || !itemInfos.some((itemInfo) => hasLegacyScoreSignals(context, itemInfo))) {
+      if (!itemInfos.some((itemInfo) => hasLegacyScoreSignals(context, itemInfo))) {
         return false;
       }
 
@@ -459,9 +459,15 @@
           getVisibleChildItemInfos(context, reviewWrap) || []
         );
         const singleCardWrapCandidates = matchingWraps
-          .map((reviewWrap) => getDirectChildItemInfos(reviewWrap))
-          .filter((itemInfos) => itemInfos.length === 1)
-          .map((itemInfos) => itemInfos[0]);
+          .flatMap((reviewWrap) => {
+            const itemInfos = getDirectChildItemInfos(reviewWrap);
+            if (itemInfos.length !== 1) {
+              return [];
+            }
+
+            const visibleItemInfos = getVisibleChildItemInfos(context, reviewWrap);
+            return Array.isArray(visibleItemInfos) ? visibleItemInfos : itemInfos;
+          });
 
         if (visibleWrapCandidates.length) {
           matchingCandidates = visibleWrapCandidates;
