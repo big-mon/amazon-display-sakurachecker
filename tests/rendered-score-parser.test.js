@@ -122,6 +122,150 @@ test("extractRenderedScore preserves the best legacy card when wrapper-scoped si
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level01.png");
 });
 
+test("extractRenderedScore uses the visible card when hidden comparison cards share the requested wrapper", () => {
+  const hiddenComparisonImage = fixtures.sampleImageTag.replace(
+    'alt="score"',
+    'alt="hidden-score"'
+  );
+  const visibleTargetImage = fixtures.sampleImageTag.replace(
+    'alt="score"',
+    'alt="visible-target"'
+  );
+  const document = parseDocument(`
+    <!DOCTYPE html>
+    <html lang="ja">
+      <body>
+        <div class="item-review-wrap">
+          <div class="item-image">
+            <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22"></a>
+          </div>
+          <div class="item-info hidden-comparison" style="display: none;">
+            <div class="item-review-box">
+              <div class="item-review-after">
+                <p class="item-rating"><span>${hiddenComparisonImage}</span>/5</p>
+              </div>
+              <div class="item-review-level">
+                <p class="item-rv-lv"><img src="/images/rv_level04.png" alt="hidden verdict"></p>
+                <p class="item-rv-score">Hidden comparison score</p>
+              </div>
+            </div>
+          </div>
+          <div class="item-info visible-target">
+            <div class="item-review-box">
+              <div class="item-review-after">
+                <p class="item-rating"><span>${visibleTargetImage}</span>/5</p>
+              </div>
+              <div class="item-review-level">
+                <p class="item-rv-lv"><img src="/images/rv_level01.png" alt="visible verdict"></p>
+                <p class="item-rv-score">Visible target score</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.suffix, "/5");
+  assert.deepEqual(
+    result.score.images.map((image) => image.alt),
+    ["visible-target"]
+  );
+  assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level01.png");
+});
+
+test("extractRenderedScore waits for hidden requested legacy cards before using a modern summary", () => {
+  const hiddenTargetImage = fixtures.sampleImageTag.replace(
+    'alt="score"',
+    'alt="hidden-target"'
+  );
+  const hiddenComparisonImage = fixtures.sampleImageTag.replace(
+    'alt="score"',
+    'alt="hidden-comparison"'
+  );
+  const document = parseDocument(`
+    <!DOCTYPE html>
+    <html lang="ja">
+      <body>
+        <div class="item-review-wrap">
+          <div class="item-image">
+            <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22"></a>
+          </div>
+          <div class="item-info hidden-target" style="display: none;">
+            <div class="item-review-box">
+              <div class="item-review-after">
+                <p class="item-rating"><span>${hiddenTargetImage}</span>/5</p>
+              </div>
+              <div class="item-review-level">
+                <p class="item-rv-score">Hidden target score</p>
+              </div>
+            </div>
+          </div>
+          <div class="item-info hidden-comparison" style="display: none;">
+            <div class="item-review-box">
+              <div class="item-review-after">
+                <p class="item-rating"><span>${hiddenComparisonImage}</span>/5</p>
+              </div>
+              <div class="item-review-level">
+                <p class="item-rv-score">Hidden comparison score</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sakuraBlock">
+          ${fixtures.modernSakuraAlertMarkup}
+          ${fixtures.modernSakuraRatingMarkup}
+        </div>
+      </body>
+    </html>
+  `);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_ready");
+  assert.equal(result.retryable, true);
+});
+
+test("extractRenderedScore waits when the only requested legacy card is hidden", () => {
+  const hiddenTargetImage = fixtures.sampleImageTag.replace(
+    'alt="score"',
+    'alt="hidden-target"'
+  );
+  const document = parseDocument(`
+    <!DOCTYPE html>
+    <html lang="ja">
+      <body>
+        <div class="item-review-wrap">
+          <div class="item-image">
+            <a href="https://www.amazon.co.jp/dp/B0TARGET42/?tag=sakurachecker-22"></a>
+          </div>
+          <div class="item-info hidden-target" style="display: none;">
+            <div class="item-review-box">
+              <div class="item-review-after">
+                <p class="item-rating"><span>${hiddenTargetImage}</span>/5</p>
+              </div>
+              <div class="item-review-level">
+                <p class="item-rv-score">Hidden target score</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sakuraBlock">
+          ${fixtures.modernSakuraAlertMarkup}
+          ${fixtures.modernSakuraRatingMarkup}
+        </div>
+      </body>
+    </html>
+  `);
+  const result = renderedParser.extractRenderedScore(document, "B0TARGET42");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_ready");
+  assert.equal(result.retryable, true);
+});
+
 test("extractRenderedScore falls back to the modern summary when wrapper-scoped legacy siblings are ambiguous", () => {
   const document = parseDocument(fixtures.ambiguousWrapperWithModernHtml);
   const result = renderedParser.extractRenderedScore(document, "B095JGJCC7");

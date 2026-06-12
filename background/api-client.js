@@ -128,6 +128,10 @@
     return Boolean(payload && payload.ok === true && hasValidScorePayload(payload.score));
   }
 
+  function isPercentScorePayload(payload) {
+    return Boolean(payload && payload.score && payload.score.suffix === "%");
+  }
+
   function createStorageAdapter() {
     function hasStorage() {
       return (
@@ -367,6 +371,36 @@
         },
         sourceUrl
       );
+    }
+
+    if (isPercentScorePayload(renderedResult)) {
+      const detailResult = await attemptRenderedFetch(
+        fetchRenderedScore,
+        {
+          asin,
+          sourceUrl,
+        },
+        sourceUrl
+      );
+      if (hasValidSuccessPayload(detailResult) && !isPercentScorePayload(detailResult)) {
+        renderedResult = detailResult;
+      }
+    }
+
+    if (shouldRetryWithBackupSearch(renderedResult)) {
+      const asinSearchResult = await attemptRenderedFetch(
+        fetchRenderedScore,
+        {
+          asin,
+          sourceUrl: requestUrl,
+        },
+        sourceUrl
+      );
+      if (hasValidSuccessPayload(asinSearchResult) && !isPercentScorePayload(asinSearchResult)) {
+        renderedResult = asinSearchResult;
+      } else {
+        renderedResult = asinSearchResult;
+      }
     }
 
     if (!renderedResult || !renderedResult.ok) {

@@ -3,7 +3,6 @@
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const archiver = require("archiver");
 
 const rootDir = path.join(__dirname, "..");
 const outputZipPath = path.join(rootDir, "extension.zip");
@@ -63,6 +62,7 @@ async function createZip() {
   ensureEntriesExist();
   syncManifestVersion();
   validateSyncedVersion();
+  const { ZipArchive } = await import("archiver");
 
   if (fs.existsSync(outputZipPath)) {
     fs.unlinkSync(outputZipPath);
@@ -70,7 +70,7 @@ async function createZip() {
 
   await new Promise((resolve, reject) => {
     const output = fs.createWriteStream(outputZipPath);
-    const archive = archiver("zip", { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
 
     output.on("close", resolve);
     output.on("error", reject);
