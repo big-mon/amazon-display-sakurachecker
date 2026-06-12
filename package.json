@@ -19,8 +19,8 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "archiver": "^7.0.1",
+    "archiver": "^8.0.0",
     "linkedom": "^0.18.12",
-    "playwright": "^1.58.2"
+    "playwright": "^1.60.0"
   }
 }
