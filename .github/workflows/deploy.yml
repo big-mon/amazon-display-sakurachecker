@@ -83,9 +83,9 @@ jobs:
         if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
         run: npx playwright install --with-deps chromium
 
-      - name: Run tests
+      - name: Run deterministic tests
         if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
-        run: npm run test:deploy
+        run: npm test
 
       - name: Create extension zip
         if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
