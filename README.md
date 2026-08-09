@@ -48,11 +48,13 @@ Amazon.co.jp の商品ページを開くと、商品タイトル付近に Sakura
 
 - [Sakura Checker](https://sakura-checker.jp/)
 
-商品 ASIN から評価情報を取得するため、次の順序で Sakura Checker の公開ページへアクセスすることがあります。
+商品 ASIN から評価情報を取得するため、検索結果に応じて Sakura Checker の次の公開経路を必要な場合に使用します。
 
-1. ASIN を Base64 エンコードし、`https://sakura-checker.jp/itemsearch/?word=<Base64 ASIN>` を取得する
-2. 該当商品の詳細ページ `https://sakura-checker.jp/search/<ASIN>/` を取得する
-3. `itemsearch` だけで商品を特定できない場合、フォールバックとして Amazon 商品 URL を Sakura Checker の検索フォームへ送信する
+- ASIN を Base64 エンコードした `https://sakura-checker.jp/itemsearch/?word=<Base64 ASIN>`
+- 該当商品の詳細ページ `https://sakura-checker.jp/search/<ASIN>/`
+- 商品を特定できない場合に Amazon 商品 URL を送信する検索フォーム
+
+URL 検索後の結果に応じて詳細ページの取得や ASIN 検索の再試行を行うことがあります。
 
 これらの情報を受け取る外部サービスは Sakura Checker だけです。Amazon 側のページ本文やレビュー本文は送信しません。
 

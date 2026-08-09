@@ -17,7 +17,7 @@ This repository uses GitHub Actions to submit the Chrome extension to the Chrome
 
 1. Open [Google Cloud Console](https://console.cloud.google.com/).
 2. Create or select a project and enable the Chrome Web Store API.
-3. Configure the OAuth consent screen.
+3. Configure the OAuth consent screen as **External**, add the Google account that owns the extension under **Test users**, and enable 2-Step Verification on that account as required by the Chrome Web Store.
 4. Following the official [Chrome Web Store API authorization guide](https://developer.chrome.com/docs/webstore/using-api), create an OAuth 2.0 client ID for a web application and register `https://developers.google.com/oauthplayground` as an authorized redirect URI.
 5. Save the client ID and client secret.
 
