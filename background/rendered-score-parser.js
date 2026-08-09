@@ -46,14 +46,7 @@
     );
   }
 
-  function createContext(rootNodeOrAsin, maybeRequestedAsin) {
-    const root =
-      rootNodeOrAsin && typeof rootNodeOrAsin.querySelector === "function"
-        ? rootNodeOrAsin
-        : (typeof document !== "undefined" ? document : null);
-    const requestedAsin =
-      root === rootNodeOrAsin ? maybeRequestedAsin : rootNodeOrAsin;
-
+  function createContext(root, requestedAsin) {
     if (!root || typeof root.querySelector !== "function") {
       return null;
     }
@@ -423,18 +416,9 @@
   }
 
   function collectLegacyCandidates(context, allowAmbiguousMatches) {
-    const seen = new Set();
     const candidates = Array.from(
       context.root.querySelectorAll(".item-review-wrap .item-info, .item-info")
-    ).filter((itemInfo) => {
-      if (seen.has(itemInfo)) {
-        return false;
-      }
-      seen.add(itemInfo);
-      return true;
-    });
-
-    let matchingCandidates = candidates;
+    );
     let scopedCandidates = candidates;
 
     if (context.requestedAsin) {
@@ -449,7 +433,6 @@
       );
 
       if (exactCandidates.length) {
-        matchingCandidates = exactCandidates;
         scopedCandidates = exactCandidates;
       } else {
         const ambiguousWrapCandidates = matchingWraps.flatMap((reviewWrap) =>
@@ -470,16 +453,12 @@
           });
 
         if (visibleWrapCandidates.length) {
-          matchingCandidates = visibleWrapCandidates;
           scopedCandidates = visibleWrapCandidates;
         } else if (singleCardWrapCandidates.length) {
-          matchingCandidates = singleCardWrapCandidates;
           scopedCandidates = singleCardWrapCandidates;
         } else if (allowAmbiguousMatches && ambiguousWrapCandidates.length) {
-          matchingCandidates = ambiguousWrapCandidates;
           scopedCandidates = ambiguousWrapCandidates;
         } else {
-          matchingCandidates = [];
           scopedCandidates = [];
         }
       }
@@ -487,7 +466,6 @@
 
     return {
       candidates,
-      matchingCandidates,
       scopedCandidates,
     };
   }
@@ -508,7 +486,7 @@
 
   function extractLegacyScore(context, options = {}) {
     const allowAmbiguousMatches = Boolean(options.allowAmbiguousMatches);
-    const { candidates, matchingCandidates, scopedCandidates } = collectLegacyCandidates(
+    const { candidates, scopedCandidates } = collectLegacyCandidates(
       context,
       allowAmbiguousMatches
     );
@@ -520,10 +498,7 @@
 
     if (!bestCandidate) {
       if (
-        findUnavailableLegacyCandidate(
-          context,
-          scopedCandidates.length ? scopedCandidates : matchingCandidates
-        )
+        findUnavailableLegacyCandidate(context, scopedCandidates)
       ) {
         return createFailure(
           "not_available",
@@ -535,7 +510,7 @@
       if (
         context.requestedAsin &&
         candidates.length &&
-        !matchingCandidates.length &&
+        !scopedCandidates.length &&
         hasPendingRequestedLegacyCard(context)
       ) {
         return createFailure(
@@ -761,8 +736,8 @@
     );
   }
 
-  function extractRenderedScore(rootNodeOrAsin, maybeRequestedAsin) {
-    const context = createContext(rootNodeOrAsin, maybeRequestedAsin);
+  function extractRenderedScore(root, requestedAsin) {
+    const context = createContext(root, requestedAsin);
     if (!context) {
       return createFailure(
         "parse_error",

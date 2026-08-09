@@ -358,7 +358,6 @@ test("AsinExtractor ignores search result data-asin entries on non-product pages
   loadScript(context, "content/asin-extractor.js");
 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
-  assert.equal(context.window.AsinExtractor.isProductPage(), false);
 });
 
 test("AsinExtractor reads the canonical product URL when pathname is not a product path", () => {
@@ -373,7 +372,6 @@ test("AsinExtractor reads the canonical product URL when pathname is not a produ
   loadScript(context, "content/asin-extractor.js");
 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), "B095JGJCC7");
-  assert.equal(context.window.AsinExtractor.isProductPage(), true);
 });
 
 test("AsinExtractor ignores Prime Video and music pages even when canonical has a product ASIN", () => {
@@ -388,7 +386,6 @@ test("AsinExtractor ignores Prime Video and music pages even when canonical has 
   loadScript(context, "content/asin-extractor.js");
 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
-  assert.equal(context.window.AsinExtractor.isProductPage(), false);
 
   const localePrimeVideoDocument = createPageDocument(
     "https://www.amazon.co.jp/-/en/gp/video/detail/B0PRIME123"
@@ -403,7 +400,6 @@ test("AsinExtractor ignores Prime Video and music pages even when canonical has 
   loadScript(context, "content/asin-extractor.js");
 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
-  assert.equal(context.window.AsinExtractor.isProductPage(), false);
 
   const musicDocument = createPageDocument("https://www.amazon.co.jp/music/player/albums/B0MUSIC1234");
   const musicCanonical = musicDocument.createElement("link");
@@ -416,7 +412,6 @@ test("AsinExtractor ignores Prime Video and music pages even when canonical has 
   loadScript(context, "content/asin-extractor.js");
 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
-  assert.equal(context.window.AsinExtractor.isProductPage(), false);
 });
 
 test("AsinExtractor still detects standard product URLs under the music section", () => {
@@ -426,7 +421,22 @@ test("AsinExtractor still detects standard product URLs under the music section"
   loadScript(context, "content/asin-extractor.js");
 
   assert.equal(context.window.AsinExtractor.extractProductASIN(), "B091BGMKYS");
-  assert.equal(context.window.AsinExtractor.isProductPage(), true);
+});
+
+test("SakuraChecker reads the current ASIN with one extractor call", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const context = createExecutionContext({ document });
+  let extractorCalls = 0;
+  context.window.AsinExtractor = {
+    extractProductASIN() {
+      extractorCalls += 1;
+      return "B095JGJCC7";
+    },
+  };
+  loadScript(context, "content/sakura-checker.js");
+
+  assert.equal(context.window.SakuraChecker.getCurrentPageAsin(), "B095JGJCC7");
+  assert.equal(extractorCalls, 1);
 });
 
 test("SakuraChecker refresh shows loading first and then renders fetched score images", async () => {

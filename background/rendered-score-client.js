@@ -160,52 +160,27 @@
   }
 
   function executeExtract(tabId, asin) {
-    return new Promise((resolve, reject) => {
-      if (
-        typeof chrome === "undefined" ||
-        !chrome.scripting ||
-        typeof chrome.scripting.executeScript !== "function"
-      ) {
-        reject(new Error("chrome.scripting.executeScript is not available."));
-        return;
-      }
-
-      chrome.scripting.executeScript(
-        {
-          target: { tabId },
-          func: (requestedAsin) => {
-            if (
-              typeof self === "undefined" ||
-              !self.RenderedScoreParser ||
-              typeof self.RenderedScoreParser.extractRenderedScore !== "function"
-            ) {
-              return {
-                ok: false,
-                code: "parse_error",
-                message: "RenderedScoreParser.extractRenderedScore is not available.",
-                retryable: false,
-              };
-            }
-
-            return self.RenderedScoreParser.extractRenderedScore(document, requestedAsin);
-          },
-          args: asin ? [asin] : [],
-        },
-        (injectionResults) => {
-          if (
-            typeof chrome !== "undefined" &&
-            chrome.runtime &&
-            chrome.runtime.lastError
-          ) {
-            reject(createChromeError("Failed to inspect the rendered Sakura Checker page."));
-            return;
-          }
-
-          const firstResult = Array.isArray(injectionResults) ? injectionResults[0] : null;
-          resolve(firstResult ? firstResult.result : null);
+    return executeTabFunction(
+      tabId,
+      (requestedAsin) => {
+        if (
+          typeof self === "undefined" ||
+          !self.RenderedScoreParser ||
+          typeof self.RenderedScoreParser.extractRenderedScore !== "function"
+        ) {
+          return {
+            ok: false,
+            code: "parse_error",
+            message: "RenderedScoreParser.extractRenderedScore is not available.",
+            retryable: false,
+          };
         }
-      );
-    });
+
+        return self.RenderedScoreParser.extractRenderedScore(document, requestedAsin);
+      },
+      asin ? [asin] : [],
+      "Failed to inspect the rendered Sakura Checker page."
+    );
   }
 
   function executeTabFunction(tabId, func, args = [], defaultMessage = "Failed to run a script.") {
