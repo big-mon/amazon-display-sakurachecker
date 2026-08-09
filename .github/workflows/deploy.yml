@@ -23,24 +23,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Check if version changed
         id: version-check
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
 
-          if ! git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+          if [ "$EVENT_NAME" = "push" ]; then
+            base_sha="$BEFORE_SHA"
+          else
+            base_sha="HEAD~1"
+          fi
+
+          if [ -z "$base_sha" ] || [[ "$base_sha" =~ ^0+$ ]] || ! git cat-file -e "${base_sha}:package.json" 2>/dev/null; then
             echo "version-changed=false" >> "$GITHUB_OUTPUT"
-            echo "No previous commit available, skipping deployment"
+            echo "No comparable package.json available, skipping deployment"
             exit 0
           fi
 
-          previous_version="$(git show HEAD~1:package.json | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          previous_version="$(git show "${base_sha}:package.json" | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
           current_version="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path("package.json").read_text(encoding="utf-8"))["version"])')"
 
+          echo "Comparison base: ${base_sha}"
           echo "Previous package.json version: ${previous_version}"
           echo "Current package.json version: ${current_version}"
 

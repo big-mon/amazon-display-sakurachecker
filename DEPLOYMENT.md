@@ -50,10 +50,10 @@ The workflow now calls the Chrome Web Store API directly so upload failures incl
 4. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
 5. Merge the version bump commit into `main`.
 6. The `Deploy to Chrome Web Store` workflow runs automatically.
-7. If `package.json` version changed in the latest commit, the workflow tests, packages, uploads, and submits the extension for public review.
+7. If the pushed `package.json` version differs from the version at the start of the push, the workflow tests, packages, uploads, and submits the extension for public review.
 8. Wait for the workflow to finish. Verify that the workflow and upload/publish step succeeded, confirm the final Chrome Web Store status is submitted or under review, and record the workflow run URL and final status in the release report.
 
-Pushes to `main` without a `package.json` version change are complete only when the workflow reports the explicit successful skip; no store submission is expected.
+Pushes to `main` without a net `package.json` version change across the pushed commit range are complete only when the workflow reports the explicit successful skip; no store submission is expected.
 
 ## Local packaging
 
