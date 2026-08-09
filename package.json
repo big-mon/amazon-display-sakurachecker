@@ -7,7 +7,7 @@
     "test:live": "node --test --test-concurrency=1 tests/integration.test.js",
     "test:e2e-extension": "node scripts/run-extension-e2e.js",
     "test:browser-compare": "node scripts/run-browser-compare.js",
-    "test:deploy": "npm run test && npm run test:live",
+    "test:deploy": "npm run test && npm run test:live && npm run test:e2e-extension",
     "sync-version": "node scripts/sync-version.js",
     "zip": "node scripts/create-extension-zip.js"
   },
@@ -19,7 +19,7 @@
   "author": "",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": "20 || >=22"
   },
   "devDependencies": {
     "archiver": "^8.0.0",

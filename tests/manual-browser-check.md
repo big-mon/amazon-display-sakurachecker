@@ -1,12 +1,81 @@
 # Manual Browser Check
 
-1. Open `chrome://extensions`.
-2. Enable developer mode and load this repository as an unpacked extension.
-3. Open an Amazon.co.jp product page with a known ASIN such as `B08N5WRWNW`.
-4. Confirm a `サクラチェッカー` panel appears near the title area.
-5. Confirm the panel first shows `取得中` and then shows a decoded score image plus `/5`.
-6. Click `再試行` and confirm the panel refreshes without leaving the page.
-7. Click `サクラチェッカーを開く` and confirm it opens `https://sakura-checker.jp/search/<ASIN>/`.
-8. Open a product page whose Sakura Checker score is not yet available, such as `B0CPS3DZ3H`.
-9. Confirm the panel ends in the error state and no extra Sakura Checker tab is left open after the fetch completes.
-10. Open a non-product page on Amazon.co.jp and confirm the panel is removed.
+固定 ASIN の商品状態や Sakura Checker の結果は時間とともに変わります。実施前に各 ASIN が想定シナリオを満たすか再検証し、実施記録へ確認日、ASIN、Amazon URL、期待状態を残してください。満たさない場合は、同じ前提を満たす ASIN に置き換えます。
+
+## 共通の前提
+
+1. `chrome://extensions` でデベロッパーモードを有効にし、このリポジトリをパッケージ化されていない拡張機能として読み込む。
+2. 拡張機能の service worker と対象タブの DevTools を開く。
+3. シナリオ間で必要に応じて `chrome.storage.local` の `score:<ASIN>` を削除し、対象ページを再読み込みする。
+
+## 共通の完了条件
+
+- [ ] 各シナリオの操作中、service worker と対象タブのコンソールに予期しないエラーが記録されない。
+
+## シナリオ 1: 新規取得に成功する商品
+
+### 前提
+
+- Sakura Checker で現在スコアを取得でき、ローカルキャッシュにない商品を使う。
+
+### 完了条件
+
+- [ ] Amazon 商品ページのタイトル付近にパネルが表示され、最初は `取得中` になる。
+- [ ] 完了後、スコア画像または数値と、`/5` または `%` が表示される。
+- [ ] 緑の成功アイコンが表示され、ツールチップまたはアクセシブル名が `最新値を取得済み` である。
+- [ ] 🔗 のアイコンリンクに `サクラチェッカーを開く` のツールチップまたはアクセシブル名があり、対象 ASIN の Sakura Checker 詳細ページを新しいタブで開く。
+- [ ] 新規取得結果には `再取得` ボタンが表示されない。
+- [ ] 取得完了後に余分な Sakura Checker の一時タブが残らない。
+
+## シナリオ 2: キャッシュ表示と再取得
+
+### 前提
+
+- シナリオ 1 と同じ商品を 12 時間以内に再読み込みし、有効な `score:<ASIN>` キャッシュがある。
+
+### 完了条件
+
+- [ ] 同じスコアと `/5` または `%` が表示される。
+- [ ] 黄色のキャッシュアイコンが表示され、ツールチップまたはアクセシブル名が `キャッシュから表示中` である。
+- [ ] キャッシュ表示のときだけ `再取得` ボタンが表示される。
+- [ ] `再取得` を押すとページを離れずに `取得中` となり、完了後は緑の最新値表示へ変わってボタンが消える。
+- [ ] 再取得後に余分な Sakura Checker の一時タブが残らない。
+
+## シナリオ 3: 期限切れキャッシュから再取得
+
+### 前提
+
+- シナリオ 2 と同じ有効な `score:<ASIN>` を用意し、DevTools から `fetchedAt` を現在より 12 時間を超えて古い ISO 8601 日時へ変更する。
+
+### 完了条件
+
+- [ ] ページを再読み込みすると `キャッシュから表示中` や `再取得` ボタンではなく、`取得中` から始まる。
+- [ ] 完了後は最新値と緑の `最新値を取得済み` 表示へ変わる。
+- [ ] `score:<ASIN>` の `fetchedAt` が新しい取得時刻に更新される。
+- [ ] 取得完了後に余分な Sakura Checker の一時タブが残らない。
+
+## シナリオ 4: 取得不可またはエラー
+
+### 前提
+
+- Sakura Checker で現在スコアを取得できない商品、または再現可能な通信エラー条件を使う。
+
+### 完了条件
+
+- [ ] パネルが `取得中` の後にエラー状態となり、赤い × アイコンを表示する。
+- [ ] アイコンのツールチップまたはアクセシブル名が `取得失敗` である。
+- [ ] スコアや `再取得` ボタンを成功結果として誤表示しない。
+- [ ] 🔗 のアイコンリンクから対象 ASIN の Sakura Checker 詳細ページを開ける。
+- [ ] 失敗後も余分な Sakura Checker の一時タブが残らない。
+
+## シナリオ 5: Amazon の非商品ページ
+
+### 前提
+
+- `https://www.amazon.co.jp/s?k=keyboard` など、商品詳細ではない Amazon.co.jp ページを使う。
+
+### 完了条件
+
+- [ ] `#sakura-checker-result` パネルが表示されない。
+- [ ] 商品ページから同一タブで非商品ページへ遷移した場合、既存パネルが削除される。
+- [ ] Sakura Checker への一時タブや取得通信が開始されない。

@@ -17,18 +17,18 @@ This repository uses GitHub Actions to submit the Chrome extension to the Chrome
 
 1. Open [Google Cloud Console](https://console.cloud.google.com/).
 2. Create or select a project and enable the Chrome Web Store API.
-3. Configure the OAuth consent screen.
-4. Create an OAuth 2.0 client ID for a desktop application.
+3. Configure the OAuth consent screen as **External**, add the Google account that owns the extension under **Test users**, and enable 2-Step Verification on that account as required by the Chrome Web Store.
+4. Following the official [Chrome Web Store API authorization guide](https://developer.chrome.com/docs/webstore/using-api), create an OAuth 2.0 client ID for a web application and register `https://developers.google.com/oauthplayground` as an authorized redirect URI.
 5. Save the client ID and client secret.
 
 ### 3. Get a refresh token
 
-1. Open the Google OAuth authorization URL with the Chrome Web Store scope.
-2. Sign in with the account that owns the extension.
-3. Approve the requested access.
-4. Exchange the returned authorization code for a refresh token.
+1. Open the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground) and enable **Use your own OAuth credentials**.
+2. Enter the client ID and client secret without recording them in this repository or logs.
+3. Authorize the `https://www.googleapis.com/auth/chromewebstore` scope with the Google account that owns the extension.
+4. Exchange the authorization code for tokens and save the refresh token as a GitHub Actions secret.
 
-The refresh token is the value used by GitHub Actions.
+Setup is complete when the refresh token is stored without exposing its value and the OAuth Playground can make an authenticated Chrome Web Store API request for the intended publisher and extension.
 
 ### 4. Configure GitHub Actions secrets
 
@@ -45,28 +45,22 @@ The workflow now calls the Chrome Web Store API directly so upload failures incl
 ## Release flow
 
 1. Update `package.json` to the release version.
-2. Run `npm run test:deploy` to execute deterministic tests and the live Sakura Checker smoke tests.
-3. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
-4. Merge the version bump commit into `main`.
-5. The `Deploy to Chrome Web Store` workflow runs automatically.
-6. If `package.json` version changed in the latest commit, the workflow tests, packages, uploads, and submits the extension for public review.
+2. Run `npm ci`, then install the required browser with `npx playwright install chromium`.
+3. Run `npm run test:deploy`; `package.json` defines the current release validation suite.
+4. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
+5. Merge the version bump commit into `main`.
+6. The `Deploy to Chrome Web Store` workflow runs automatically.
+7. If the pushed `package.json` version differs from the version at the start of the push, the workflow tests, packages, uploads, and submits the extension for public review.
+8. Wait for the workflow to finish. Verify that the workflow and upload/publish step succeeded, confirm the final Chrome Web Store status is submitted or under review, and record the workflow run URL and final status in the release report.
 
-Pushes to `main` without a `package.json` version change are skipped successfully.
-
-## Test commands
-
-- `npm test`: deterministic parser/API tests only
-- `npm run test:live`: live Sakura Checker smoke tests for a small fixed ASIN set via rendered DOM extraction
-- `npm run test:e2e-extension`: Playwright Chromium extension smoke test against a real Amazon product page
-- `npm run test:deploy`: deterministic tests plus the blocking live smoke tests used by GitHub Actions
-- `npm run test:browser-compare`: opt-in browser comparison for local investigation; not part of deployment gating
+Pushes to `main` without a net `package.json` version change across the pushed commit range are complete only when the workflow reports the explicit successful skip; no store submission is expected.
 
 ## Local packaging
 
 Create a Chrome Web Store upload zip locally with:
 
 ```bash
-npm install
+npm ci
 npm run zip
 ```
 
