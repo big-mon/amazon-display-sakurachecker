@@ -214,7 +214,6 @@
     waitImpl = defaultWait,
   }) {
     let nextAllowedRequestAt = 0;
-    let rateLimitChain = Promise.resolve();
     let executionChain = Promise.resolve();
 
     async function waitForTurn({
@@ -222,20 +221,15 @@
       nowImpl = Date.now,
       randomImpl = Math.random,
     } = {}) {
-      const reservation = rateLimitChain.then(async () => {
-        const now = nowImpl();
-        const waitMs = Math.max(0, nextAllowedRequestAt - now);
-        if (waitMs > 0) {
-          await waitOverride(waitMs);
-        }
+      const now = nowImpl();
+      const waitMs = Math.max(0, nextAllowedRequestAt - now);
+      if (waitMs > 0) {
+        await waitOverride(waitMs);
+      }
 
-        const randomValue = Math.min(1, Math.max(0, Number(randomImpl()) || 0));
-        const jitterMs = Math.floor(randomValue * maxRequestJitterMs);
-        nextAllowedRequestAt = nowImpl() + minRequestIntervalMs + jitterMs;
-      });
-
-      rateLimitChain = reservation.catch(() => {});
-      return reservation;
+      const randomValue = Math.min(1, Math.max(0, Number(randomImpl()) || 0));
+      const jitterMs = Math.floor(randomValue * maxRequestJitterMs);
+      nextAllowedRequestAt = nowImpl() + minRequestIntervalMs + jitterMs;
     }
 
     function enqueue(task) {
@@ -246,7 +240,6 @@
 
     function reset() {
       nextAllowedRequestAt = 0;
-      rateLimitChain = Promise.resolve();
       executionChain = Promise.resolve();
     }
 
@@ -294,10 +287,6 @@
         : "Could not extract a rendered Sakura Checker score.",
       buildDetailUrl(asin)
     );
-  }
-
-  function shouldRetryWithProductUrl(renderedResult) {
-    return Boolean(renderedResult && renderedResult.code === "url_search_required");
   }
 
   // Only explicit failures should consult backup retry codes; anything else
@@ -359,7 +348,7 @@
     );
 
     if (
-      shouldRetryWithProductUrl(renderedResult) ||
+      Boolean(renderedResult && renderedResult.code === "url_search_required") ||
       shouldRetryWithBackupSearch(renderedResult)
     ) {
       renderedResult = await attemptRenderedFetch(
@@ -388,7 +377,7 @@
     }
 
     if (shouldRetryWithBackupSearch(renderedResult)) {
-      const asinSearchResult = await attemptRenderedFetch(
+      renderedResult = await attemptRenderedFetch(
         fetchRenderedScore,
         {
           asin,
@@ -396,11 +385,6 @@
         },
         sourceUrl
       );
-      if (hasValidSuccessPayload(asinSearchResult) && !isPercentScorePayload(asinSearchResult)) {
-        renderedResult = asinSearchResult;
-      } else {
-        renderedResult = asinSearchResult;
-      }
     }
 
     if (!renderedResult || !renderedResult.ok) {
@@ -480,13 +464,9 @@
   }
 
   return {
-    buildAmazonProductUrl,
     buildDetailUrl,
-    buildSourceUrl,
     checkSakuraScore,
-    encodeItemSearchWord,
     __testing: {
-      readCache: scoreCache.read,
       reset: resetForTests,
       writeCache: scoreCache.write,
     },

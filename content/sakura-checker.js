@@ -13,11 +13,7 @@
     }
 
     getCurrentPageAsin() {
-      if (!window.AsinExtractor || !window.AsinExtractor.isProductPage()) {
-        return null;
-      }
-
-      return window.AsinExtractor.extractProductASIN();
+      return window.AsinExtractor ? window.AsinExtractor.extractProductASIN() : null;
     }
 
     getCurrentProductUrl(asin) {

@@ -33,32 +33,12 @@ function installChromeStorageStub() {
   };
 }
 
-test("buildSourceUrl creates the Sakura Checker search URL", () => {
-  apiClient.__testing.reset();
-  assert.equal(
-    apiClient.buildSourceUrl("B08N5WRWNW"),
-    "https://sakura-checker.jp/itemsearch/?word=QjA4TjVXUldOVw=="
-  );
-});
-
 test("buildDetailUrl creates the Sakura Checker detail URL", () => {
   apiClient.__testing.reset();
   assert.equal(
     apiClient.buildDetailUrl("B08N5WRWNW"),
     "https://sakura-checker.jp/search/B08N5WRWNW/"
   );
-});
-
-test("buildAmazonProductUrl creates the canonical Amazon product URL", () => {
-  apiClient.__testing.reset();
-  assert.equal(
-    apiClient.buildAmazonProductUrl("B08N5WRWNW"),
-    "https://www.amazon.co.jp/dp/B08N5WRWNW"
-  );
-});
-
-test("encodeItemSearchWord base64-encodes the ASIN", () => {
-  assert.equal(apiClient.encodeItemSearchWord("B091BGMKYS"), "QjA5MUJHTUtZUw==");
 });
 
 test("checkSakuraScore caches successful rendered responses", async () => {

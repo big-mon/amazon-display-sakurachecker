@@ -40,12 +40,7 @@
     return null;
   }
 
-  function isProductPage() {
-    return Boolean(extractProductASIN());
-  }
-
   window.AsinExtractor = {
     extractProductASIN,
-    isProductPage,
   };
 })();
