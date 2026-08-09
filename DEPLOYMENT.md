@@ -45,12 +45,13 @@ The workflow now calls the Chrome Web Store API directly so upload failures incl
 ## Release flow
 
 1. Update `package.json` to the release version.
-2. Run `npm run test:deploy`; `package.json` defines the current release validation suite.
-3. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
-4. Merge the version bump commit into `main`.
-5. The `Deploy to Chrome Web Store` workflow runs automatically.
-6. If `package.json` version changed in the latest commit, the workflow tests, packages, uploads, and submits the extension for public review.
-7. Wait for the workflow to finish. Verify that the workflow and upload/publish step succeeded, confirm the final Chrome Web Store status is submitted or under review, and record the workflow run URL and final status in the release report.
+2. Run `npm ci`, then install the required browser with `npx playwright install chromium`.
+3. Run `npm run test:deploy`; `package.json` defines the current release validation suite.
+4. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
+5. Merge the version bump commit into `main`.
+6. The `Deploy to Chrome Web Store` workflow runs automatically.
+7. If `package.json` version changed in the latest commit, the workflow tests, packages, uploads, and submits the extension for public review.
+8. Wait for the workflow to finish. Verify that the workflow and upload/publish step succeeded, confirm the final Chrome Web Store status is submitted or under review, and record the workflow run URL and final status in the release report.
 
 Pushes to `main` without a `package.json` version change are complete only when the workflow reports the explicit successful skip; no store submission is expected.
 
