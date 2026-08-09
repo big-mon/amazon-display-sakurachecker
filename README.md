@@ -2,7 +2,7 @@
 
 `Amazon Display Sakura Checker` は、Amazon.co.jp の商品ページ上に Sakura Checker の評価画像を表示する Chrome 拡張です。
 
-Chrome Web Store での公開を前提に、利用者向けには権限・通信・保存データの扱いを、開発者向けにはセットアップ・テスト・配布手順をまとめています。
+Chrome Web Store での公開を前提に、利用者向けの権限・通信・保存データの扱いをまとめています。
 
 ## 利用者向け
 
@@ -48,11 +48,13 @@ Amazon.co.jp の商品ページを開くと、商品タイトル付近に Sakura
 
 - [Sakura Checker](https://sakura-checker.jp/)
 
-通信内容は、商品 ASIN に対応する Sakura Checker の検索ページへの `GET` リクエストです。
+商品 ASIN から評価情報を取得するため、次の順序で Sakura Checker の公開ページへアクセスすることがあります。
 
-- `https://sakura-checker.jp/search/<ASIN>/`
+1. ASIN を Base64 エンコードし、`https://sakura-checker.jp/itemsearch/?word=<Base64 ASIN>` を取得する
+2. 該当商品の詳細ページ `https://sakura-checker.jp/search/<ASIN>/` を取得する
+3. `itemsearch` だけで商品を特定できない場合、フォールバックとして Amazon 商品 URL を Sakura Checker の検索フォームへ送信する
 
-Amazon 側のページ本文やレビュー本文を Sakura Checker に送信することはありません。ASIN を使って該当ページを取得します。
+これらの情報を受け取る外部サービスは Sakura Checker だけです。Amazon 側のページ本文やレビュー本文は送信しません。
 
 ### 保存する情報
 
@@ -60,9 +62,9 @@ Amazon 側のページ本文やレビュー本文を Sakura Checker に送信す
 
 - キー: `score:<ASIN>`
 - 保存内容: 取得時刻、Sakura Checker の参照 URL、評価画像情報、判定画像情報
-- 保持期間: 12 時間
+- キャッシュとして再利用する有効期間: 12 時間
 
-これは同じ商品を再表示したときの不要な再取得を減らすためのローカルキャッシュです。
+これは同じ商品を再表示したときの不要な再取得を減らすためのローカルキャッシュです。期限切れの保存値は再利用されませんが、上書き、ブラウザデータの消去、または拡張機能の削除までローカルストレージに残る場合があります。
 
 取得時には、Sakura Checker の描画後 DOM を読むために `active: false` の一時タブを短時間だけ開いて、読み取り後すぐ閉じることがあります。
 
@@ -88,7 +90,7 @@ Amazon 側のページ本文やレビュー本文を Sakura Checker に送信す
 
 `manifest.json` で要求している権限は次のとおりです。
 
-- `storage`: Sakura Checker の取得結果を 12 時間キャッシュするため
+- `storage`: Sakura Checker の取得結果を最大 12 時間再利用するため
 - `tabs`: Sakura Checker の描画後 DOM を読むために、`active: false` の一時タブを短時間作成して閉じるため
 - `scripting`: 一時タブ上の Sakura Checker ページへスクリプトを注入し、描画後の DOM を読み取るため
 - `https://www.amazon.co.jp/*`: Amazon.co.jp の商品ページで拡張を動かし、ASIN を読み取って表示 UI を挿入するため
@@ -103,80 +105,16 @@ Amazon 側のページ本文やレビュー本文を Sakura Checker に送信す
 
 ### 関連ドキュメント
 
-- [プライバシーポリシー](./PRIVACY_POLICY.md)
+- [プライバシーポリシー](./PRIVACY_POLICY.md) — データアクセス、外部通信、保存に関する正本
 - [ライセンス](./LICENSE)
 
 ### ストア説明欄に転記できる要約
 
-この拡張は Amazon.co.jp の商品ページで ASIN を読み取り、Sakura Checker の公開ページを参照して評価画像を表示します。外部通信先は Sakura Checker のみです。個人情報、Amazon アカウント情報、入力内容、閲覧履歴一覧は収集しません。取得結果は再取得を減らすためにブラウザ内へ 12 時間キャッシュします。
+以下はストア転記用の要約です。データの取扱いを変更するときは、正本である [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) と同時に更新します。
 
-## 開発者向け
+この拡張は Amazon.co.jp の商品ページで ASIN を読み取り、Sakura Checker の公開ページを参照して評価画像を表示します。外部通信先は Sakura Checker のみです。個人情報、Amazon アカウント情報、入力内容、閲覧履歴一覧は収集しません。取得結果は再取得を減らすためにブラウザ内で最大 12 時間再利用します。
 
-### リポジトリ概要
+## 開発・運用
 
-このリポジトリは、Amazon 商品ページ上に Sakura Checker の結果を埋め込む Chrome 拡張を管理します。
-
-- `content/`: ASIN 取得、表示 UI、Sakura Checker 連携のコンテンツスクリプト
-- `background.js`: 一時タブ生成、描画後 DOM 読み取り、キャッシュ制御を行う service worker
-- `tests/`: パーサー、API クライアント、コンテンツフロー、外部連携のテスト
-- `scripts/`: zip 生成、manifest version 同期、E2E 実行補助スクリプト
-
-### 実装メモ
-
-- 描画後の結果を読むために、拡張機能が `active: false` の一時的な Sakura Checker タブをバックグラウンドで開くことがあります。このタブは取得処理の完了後に自動で閉じられる想定です。
-- Sakura Checker 側でまだスコアが公開されていない商品や、レビュー件数不足でスコア化できない商品では、取得処理はエラー状態で終了しますが、一時タブはその場合も自動で閉じられる想定です。
-
-### セットアップ
-
-1. 依存関係をインストールします。
-
-```bash
-npm install
-```
-
-2. 初回にライブテストや E2E を動かす場合だけ、Playwright の Chromium をインストールします。
-
-```bash
-npx playwright install chromium
-```
-
-3. Chrome で `chrome://extensions/` を開きます。
-4. デベロッパーモードを有効にします。
-5. `パッケージ化されていない拡張機能を読み込む` からこのディレクトリを選びます。
-
-### テスト
-
-用途に応じて次のコマンドを使います。
-
-- `npm test`: 安定した決定論的テスト。パーサー、描画済みスコア抽出、API クライアント、content-flow を検証します
-- `npm run test:live`: Sakura Checker 実ページに対する rendered DOM のスモークテストです
-- `npm run test:e2e-extension`: 実際の Amazon 商品ページを使う Playwright Chromium の拡張 E2E です
-- `npm run test:deploy`: デプロイ前提の確認コマンドです。`npm test` と `npm run test:live` をまとめて実行します
-- `npm run test:browser-compare`: ローカル調査用の opt-in テストです。通常の開発フローや GitHub Actions のデプロイゲートには含めません
-
-`npm test` は繰り返し実行しても安定する前提のテストです。外部サイト依存の確認は `npm run test:live` と `npm run test:e2e-extension` で行います。
-
-### パッケージング
-
-Chrome Web Store 提出用 zip は次のコマンドで作成します。
-
-```bash
-npm run zip
-```
-
-`npm run zip` は `package.json` の version を `manifest.json` に同期したうえで、拡張の実行に必要なファイルだけを含む `extension.zip` をリポジトリ直下へ生成します。
-
-### リリース
-
-Chrome Web Store への提出と GitHub Actions を使った公開フローは [DEPLOYMENT.md](./DEPLOYMENT.md) にまとめています。
-
-リリース前の最小チェック:
-
-- `npm run test:deploy`
-- `npm run zip`
-
-### 関連ドキュメント
-
-- [Chrome Web Store デプロイ手順](./DEPLOYMENT.md)
-- [プライバシーポリシー](./PRIVACY_POLICY.md)
-- [ライセンス](./LICENSE)
+- [AI エージェント向け開発・検証規約](./AGENTS.md)
+- [Chrome Web Store のパッケージング・デプロイ手順](./DEPLOYMENT.md)
