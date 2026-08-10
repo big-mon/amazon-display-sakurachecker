@@ -20,7 +20,7 @@ function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function formatFailure(asin, result, error) {
+function formatFailure(asin, result, error, diagnostics) {
   const parts = [`ASIN ${asin} live smoke failed.`];
 
   if (result) {
@@ -37,6 +37,10 @@ function formatFailure(asin, result, error) {
 
   if (error) {
     parts.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (diagnostics) {
+    parts.push(`Page: ${JSON.stringify(diagnostics)}`);
   }
 
   return parts.join(" ");
@@ -94,23 +98,27 @@ async function waitForRenderedScore(page, asin) {
 async function runLiveSmokeWithRetry(asin) {
   let lastResult = null;
   let lastError = null;
+  let lastDiagnostics = null;
 
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
     let browser = null;
+    let page = null;
+    let responseStatus = null;
 
     try {
       browser = await chromium.launch({ headless: true });
-      const page = await browser.newPage({
+      page = await browser.newPage({
         locale: "ja-JP",
         userAgent:
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
           "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
       });
 
-      await page.goto(`https://sakura-checker.jp/search/${asin}/`, {
+      const response = await page.goto(`https://sakura-checker.jp/search/${asin}/`, {
         waitUntil: "domcontentloaded",
         timeout: renderTimeoutMs,
       });
+      responseStatus = response ? response.status() : null;
 
       const result = await waitForRenderedScore(page, asin);
       lastResult = result;
@@ -128,8 +136,31 @@ async function runLiveSmokeWithRetry(asin) {
     } catch (error) {
       lastError = error;
 
+      if (page) {
+        try {
+          const bodyText = await page.locator("body").innerText({ timeout: 1000 });
+          lastDiagnostics = {
+            status: responseStatus,
+            url: page.url(),
+            title: await page.title(),
+            body: bodyText.replace(/\s+/g, " ").slice(0, 500),
+          };
+        } catch (diagnosticError) {
+          lastDiagnostics = {
+            status: responseStatus,
+            url: page.url(),
+            error:
+              diagnosticError instanceof Error
+                ? diagnosticError.message
+                : String(diagnosticError),
+          };
+        }
+      }
+
       if (attempt === retryDelaysMs.length) {
-        throw new Error(formatFailure(asin, lastResult, lastError), { cause: error });
+        throw new Error(formatFailure(asin, lastResult, lastError, lastDiagnostics), {
+          cause: error,
+        });
       }
 
       await delay(retryDelaysMs[attempt]);

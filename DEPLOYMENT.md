@@ -46,14 +46,16 @@ The workflow now calls the Chrome Web Store API directly so upload failures incl
 
 1. Update `package.json` to the release version.
 2. Run `npm ci`, then install the required browser with `npx playwright install chromium`.
-3. Run `npm run test:deploy`; `package.json` defines the current release validation suite.
+3. Run `npm run test:deploy` locally; this full release validation is required, and `package.json` defines the current suite.
 4. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
 5. Merge the version bump commit into `main`.
 6. The `Deploy to Chrome Web Store` workflow runs automatically.
-7. If the pushed `package.json` version differs from the version at the start of the push, the workflow tests, packages, uploads, and submits the extension for public review.
+7. If the pushed `package.json` version differs from the version at the start of the push, the workflow reruns deterministic tests with `npm test`, packages, uploads, and submits the extension for public review.
 8. Wait for the workflow to finish. Verify that the workflow and upload/publish step succeeded, confirm the final Chrome Web Store status is submitted or under review, and record the workflow run URL and final status in the release report.
 
 Pushes to `main` without a net `package.json` version change across the pushed commit range are complete only when the workflow reports the explicit successful skip; no store submission is expected.
+
+GitHub-hosted Ubuntu runners cannot execute the Sakura Checker live or extension E2E checks because `sakura-checker.jp` blocks their requests with HTTP 403 (`Service unavailable` / `The request is blocked`). Therefore, the required live and E2E checks remain part of the local `npm run test:deploy` release validation, while GitHub Actions reruns deterministic tests and packaging only. A manually dispatched workflow with `dry_run` enabled validates the hosted deterministic-test and packaging path without uploading to the Chrome Web Store.
 
 ## Local packaging
 

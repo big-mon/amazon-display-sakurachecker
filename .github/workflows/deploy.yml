@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run release validation without uploading to the Chrome Web Store
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -63,30 +69,32 @@ jobs:
           fi
 
       - name: Setup Node.js
-        if: steps.version-check.outputs.version-changed == 'true'
+        if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
 
       - name: Install dependencies
-        if: steps.version-check.outputs.version-changed == 'true'
+        if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
         run: npm ci
 
       - name: Install Playwright Chromium
-        if: steps.version-check.outputs.version-changed == 'true'
+        if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
         run: npx playwright install --with-deps chromium
 
-      - name: Run tests
-        if: steps.version-check.outputs.version-changed == 'true'
-        run: npm run test:deploy
+      - name: Run deterministic tests
+        if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: npm test
 
       - name: Create extension zip
-        if: steps.version-check.outputs.version-changed == 'true'
+        if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
         run: npm run zip
 
       - name: Upload to Chrome Web Store
-        if: steps.version-check.outputs.version-changed == 'true'
+        if: >-
+          steps.version-check.outputs.version-changed == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.dry_run == false)
         env:
           CHROME_EXTENSION_ZIP_PATH: extension.zip
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
