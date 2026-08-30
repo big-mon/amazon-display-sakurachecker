@@ -227,7 +227,56 @@ test("checkSakuraScore caches successful rendered responses", async () => {
   }
 });
 
-test("checkSakuraScore filters unsafe fresh score and verdict images", async () => {
+test("checkSakuraScore rejects mixed unsafe fresh score images and does not cache them", async () => {
+  const cleanup = installChromeStorageStub();
+  let fetchRenderedScoreCalls = 0;
+
+  try {
+    const fetchRenderedScoreImpl = async () => {
+      fetchRenderedScoreCalls += 1;
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [
+            { src: "data:image/png;base64,SAFE-1", alt: "safe-1" },
+            { src: "https://tracker.invalid/pixel.png", alt: "unsafe" },
+            { src: "data:image/png;base64,SAFE-2", alt: "safe-2" },
+          ],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    };
+
+    const first = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: true,
+      fetchRenderedScoreImpl,
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+    const second = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: false,
+      fetchRenderedScoreImpl,
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(first.ok, false);
+    assert.equal(first.code, "parse_error");
+    assert.equal(second.ok, false);
+    assert.equal(second.code, "parse_error");
+    assert.equal(first.cached, undefined);
+    assert.equal(second.cached, undefined);
+    assert.equal(fetchRenderedScoreCalls, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkSakuraScore normalizes fresh score and removes unsafe verdict images", async () => {
   const cleanup = installChromeStorageStub();
 
   try {
@@ -239,7 +288,6 @@ test("checkSakuraScore filters unsafe fresh score and verdict images", async () 
         score: {
           kind: "visual-image",
           images: [
-            { src: "https://tracker.invalid/pixel.png", alt: "unsafe" },
             { src: "/images/score.png", alt: "safe-relative" },
             { src: "data:image/png;base64,AAAA", alt: "safe-data" },
           ],

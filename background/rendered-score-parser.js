@@ -166,11 +166,15 @@
   }
 
   function getRatingImages(context, ratingNodes) {
-    const imageGroups = Array.from(ratingNodes, (ratingNode) =>
-      Array.from(ratingNode.querySelectorAll("img"))
-        .map((image) => getImagePayload(context, image))
-        .filter(Boolean)
-    ).filter((group) => group.length);
+    const imageGroups = Array.from(ratingNodes, (ratingNode) => {
+      const images = Array.from(ratingNode.querySelectorAll("img"));
+      if (!images.length) {
+        return [];
+      }
+
+      const payloads = images.map((image) => getImagePayload(context, image));
+      return payloads.every(Boolean) ? payloads : [];
+    }).filter((group) => group.length);
 
     if (!imageGroups.length) {
       return [];

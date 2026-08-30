@@ -76,6 +76,32 @@ test("extractRenderedScore filters unsafe image URLs and normalizes supported Sa
   }
 });
 
+test("extractRenderedScore keeps a legacy /5 score retryable when any score image is unsafe", () => {
+  const document = parseDocument(`
+    <div class="item-review-wrap">
+      <div class="item-info">
+        <div class="item-review-box">
+          <div class="item-review-after">
+            <p class="item-rating"><span>
+              <img src="data:image/png;base64,SAFE-1" alt="safe-1">
+              <img src="https://tracker.invalid/pixel.png" alt="unsafe">
+              <img src="data:image/png;base64,SAFE-2" alt="safe-2">
+            </span>/5</p>
+          </div>
+          <div class="item-review-level">
+            <p class="item-rv-score">Amazonと同等のスコア</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+  const result = renderedParser.extractRenderedScore(document);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_ready");
+  assert.equal(result.retryable, true);
+});
+
 test("extractRenderedScore omits an unsafe verdict image while preserving safe score content", () => {
   const result = renderedParser.extractRenderedScore(
     parseLegacyImageCard("data:image/png;base64,AAAA", "https://tracker.invalid/verdict.png")

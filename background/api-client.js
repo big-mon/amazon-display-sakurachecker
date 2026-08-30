@@ -102,7 +102,7 @@
     return {
       ...score,
       images: Array.isArray(score.images)
-        ? score.images.map(normalizeImage).filter(Boolean)
+        ? score.images.map(normalizeImage)
         : [],
     };
   }
