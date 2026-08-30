@@ -433,6 +433,26 @@ test("extractRenderedScore prefers the modern summary over a pending legacy card
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/sakura_lv00.png");
 });
 
+test("extractRenderedScore keeps a modern multi-image score retryable when any score image is unsafe", () => {
+  const document = parseDocument(`
+    <div class="sakuraBlock">
+      <p class="sakura-alert">
+        サクラ度は
+        <span class="sakura-num">
+          <img src="data:image/png;base64,SAFE-1" alt="safe-1">
+          <img src="https://tracker.invalid/pixel.png" alt="unsafe">
+          <img src="data:image/png;base64,SAFE-2" alt="safe-2">
+        </span>
+      </p>
+    </div>
+  `);
+  const result = renderedParser.extractRenderedScore(document);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "not_ready");
+  assert.equal(result.retryable, true);
+});
+
 test("extractRenderedScore falls back to the rendered modern summary when needed", () => {
   const document = parseDocument(fixtures.fixedRenderedModernHtml);
   const result = renderedParser.extractRenderedScore(document);

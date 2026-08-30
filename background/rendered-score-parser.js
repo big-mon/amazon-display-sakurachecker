@@ -634,12 +634,12 @@
     }
 
     const percentRoot = scoreRoot.querySelector(".sakura-num-per");
-    const images = Array.from(scoreRoot.querySelectorAll("img"))
-      .filter((image) => !percentRoot || !percentRoot.contains(image))
-      .map((image) => getImagePayload(context, image))
-      .filter(Boolean);
+    const scoreImages = Array.from(scoreRoot.querySelectorAll("img")).filter(
+      (image) => !percentRoot || !percentRoot.contains(image)
+    );
+    const images = scoreImages.map((image) => getImagePayload(context, image));
 
-    if (!images.length) {
+    if (!scoreImages.length || !images.every(Boolean)) {
       return null;
     }
 
