@@ -523,7 +523,6 @@
   }
 
   window.UiDisplay = {
-    ensureRoot,
     remove,
     renderError,
     renderLoading,

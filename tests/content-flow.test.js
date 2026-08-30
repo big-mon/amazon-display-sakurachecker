@@ -225,8 +225,16 @@ function createPageDocument(url) {
   return document;
 }
 
+function appendCanonical(document, href) {
+  const canonical = document.createElement("link");
+  canonical.setAttribute("rel", "canonical");
+  canonical.setAttribute("href", href);
+  document.head.appendChild(canonical);
+}
+
 function createExecutionContext({ document, chrome } = {}) {
   const mutationObservers = [];
+  const intervalCallbacks = [];
   const context = {
     console,
     document: document || createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7"),
@@ -241,6 +249,10 @@ function createExecutionContext({ document, chrome } = {}) {
 
       disconnect() {}
     },
+    setInterval(callback, delay) {
+      intervalCallbacks.push({ callback, delay });
+      return intervalCallbacks.length;
+    },
     URL,
   };
 
@@ -249,6 +261,7 @@ function createExecutionContext({ document, chrome } = {}) {
   context.location = context.document.location;
   context.globalThis = context;
   context.__mutationObservers = mutationObservers;
+  context.__intervalCallbacks = intervalCallbacks;
 
   return vm.createContext(context);
 }
@@ -374,6 +387,17 @@ test("AsinExtractor reads the canonical product URL when pathname is not a produ
   assert.equal(context.window.AsinExtractor.extractProductASIN(), "B095JGJCC7");
 });
 
+test("AsinExtractor ignores an external canonical on a non-product page", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/gp/aw");
+  appendCanonical(document, "https://evil.example/dp/B095JGJCC7");
+
+  const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/asin-extractor.js");
+
+  assert.equal(context.window.AsinExtractor.extractProductASIN(), null);
+});
+
 test("AsinExtractor ignores Prime Video and music pages even when canonical has a product ASIN", () => {
   const primeVideoDocument = createPageDocument("https://www.amazon.co.jp/gp/video/detail/B0PRIME123");
   const primeCanonical = primeVideoDocument.createElement("link");
@@ -437,6 +461,70 @@ test("SakuraChecker reads the current ASIN with one extractor call", () => {
 
   assert.equal(context.window.SakuraChecker.getCurrentPageAsin(), "B095JGJCC7");
   assert.equal(extractorCalls, 1);
+});
+
+test("SakuraChecker falls back when the canonical URL has a different ASIN", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/gp/aw");
+  appendCanonical(document, "https://www.amazon.co.jp/dp/B091BGMKYS");
+
+  const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/sakura-checker.js");
+
+  assert.equal(
+    context.window.SakuraChecker.getCurrentProductUrl("B095JGJCC7"),
+    "https://www.amazon.co.jp/dp/B095JGJCC7"
+  );
+});
+
+test("SakuraChecker falls back when the canonical URL has an external host", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/gp/aw");
+  appendCanonical(document, "https://evil.example/dp/B095JGJCC7");
+
+  const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/sakura-checker.js");
+
+  assert.equal(
+    context.window.SakuraChecker.getCurrentProductUrl("B095JGJCC7"),
+    "https://www.amazon.co.jp/dp/B095JGJCC7"
+  );
+});
+
+test("SakuraChecker accepts a matching relative canonical as an absolute URL", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/gp/aw");
+  appendCanonical(document, "../dp/B095JGJCC7?ref=canonical");
+
+  const context = createExecutionContext({ document });
+  loadScript(context, "shared/asin-utils.js");
+  loadScript(context, "content/sakura-checker.js");
+
+  assert.equal(
+    context.window.SakuraChecker.getCurrentProductUrl("B095JGJCC7"),
+    "https://www.amazon.co.jp/dp/B095JGJCC7?ref=canonical"
+  );
+});
+
+test("SakuraChecker refreshes when the URL changes without a DOM mutation", () => {
+  const document = createPageDocument("https://www.amazon.co.jp/dp/B095JGJCC7");
+  const context = createExecutionContext({ document });
+  loadScript(context, "content/sakura-checker.js");
+
+  const refreshCalls = [];
+  context.window.SakuraChecker.refreshForCurrentPage = () => {
+    refreshCalls.push(context.window.location.href);
+  };
+
+  context.window.SakuraChecker.observePageChanges();
+
+  context.document.location = new URL("https://www.amazon.co.jp/dp/B091BGMKYS");
+  context.window.location = context.document.location;
+  context.location = context.document.location;
+  context.__intervalCallbacks[0].callback();
+
+  assert.equal(context.__intervalCallbacks.length, 1);
+  assert.equal(context.__intervalCallbacks[0].delay, 1000);
+  assert.deepEqual(refreshCalls, ["https://www.amazon.co.jp/dp/B091BGMKYS"]);
 });
 
 test("SakuraChecker refresh shows loading first and then renders fetched score images", async () => {

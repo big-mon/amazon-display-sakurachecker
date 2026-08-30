@@ -17,6 +17,80 @@ function parseDocument(html, url = "https://sakura-checker.jp/search/B08N5WRWNW/
   return document;
 }
 
+function parseLegacyImageCard(scoreSrc, verdictSrc = "/images/rv_level03.png") {
+  return parseDocument(`
+    <div class="item-review-wrap">
+      <div class="item-info">
+        <div class="item-review-box">
+          <div class="item-review-after">
+            <p class="item-rating"><span><img src="${scoreSrc}" alt="score"></span>/5</p>
+          </div>
+          <div class="item-review-level">
+            <p class="item-rv-lv"><img src="${verdictSrc}" alt="verdict"></p>
+            <p class="item-rv-score">Amazonと同等のスコア</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+test("extractRenderedScore rejects an external rendered-card score image", () => {
+  const document = parseLegacyImageCard("https://tracker.invalid/pixel.png");
+  const result = renderedParser.extractRenderedScore(document);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.score, undefined);
+});
+
+test("extractRenderedScore filters unsafe image URLs and normalizes supported Sakura URLs", () => {
+  const rejectedUrls = [
+    "//tracker.invalid/pixel.png",
+    "http://sakura-checker.jp/images/score.png",
+    "javascript:alert(1)",
+    "blob:https://sakura-checker.jp/image-id",
+    "chrome-extension://unsafe/image.png",
+    "data:text/html,%3Csvg%3E",
+    "http://[invalid",
+    "",
+  ];
+
+  for (const rejectedUrl of rejectedUrls) {
+    const result = renderedParser.extractRenderedScore(parseLegacyImageCard(rejectedUrl));
+    assert.equal(result.ok, false, rejectedUrl || "empty URL");
+  }
+
+  const acceptedUrls = [
+    ["data:image/png;base64,AAAA", "data:image/png;base64,AAAA"],
+    ["data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"],
+    ["/images/score.png", "https://sakura-checker.jp/images/score.png"],
+    ["//sakura-checker.jp/images/score.png", "https://sakura-checker.jp/images/score.png"],
+    ["https://sakura-checker.jp/images/score.png", "https://sakura-checker.jp/images/score.png"],
+  ];
+
+  for (const [sourceUrl, expectedUrl] of acceptedUrls) {
+    const result = renderedParser.extractRenderedScore(parseLegacyImageCard(sourceUrl));
+    assert.equal(result.ok, true, sourceUrl);
+    assert.equal(result.score.images[0].src, expectedUrl);
+    assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/rv_level03.png");
+  }
+});
+
+test("extractRenderedScore omits an unsafe verdict image while preserving safe score content", () => {
+  const result = renderedParser.extractRenderedScore(
+    parseLegacyImageCard("data:image/png;base64,AAAA", "https://tracker.invalid/verdict.png")
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.score.images, [
+    { src: "data:image/png;base64,AAAA", alt: "score" },
+  ]);
+  assert.deepEqual(result.verdict, {
+    kind: "text-verdict",
+    lines: ["Amazonと同等のスコア"],
+  });
+});
+
 test("extractRenderedScore reads the legacy /5 product card with verdict", () => {
   const document = parseDocument(fixtures.realisticPageHtml);
   const result = renderedParser.extractRenderedScore(document);

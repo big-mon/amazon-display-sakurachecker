@@ -79,10 +79,6 @@ jobs:
         if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
         run: npm ci
 
-      - name: Install Playwright Chromium
-        if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
-        run: npx playwright install --with-deps chromium
-
       - name: Run deterministic tests
         if: steps.version-check.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
         run: npm test

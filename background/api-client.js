@@ -11,6 +11,7 @@
   root.ApiClient = exportsObject;
 })(typeof self !== "undefined" ? self : globalThis, function (workerClient, nodeClient) {
   const RenderedScoreClient = workerClient || nodeClient;
+  const SAKURA_ORIGIN = "https://sakura-checker.jp";
   const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
   const CACHE_PREFIX = "score:";
   const MIN_REQUEST_INTERVAL_MS = 2000;
@@ -51,43 +52,80 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
-  function buildInFlightRequestKey({ asin }) {
-    return JSON.stringify({
-      asin: String(asin || ""),
-    });
-  }
-
-  function resolveSakuraUrl(value) {
-    if (!value) {
-      return value;
+  function resolveSakuraImageUrl(value) {
+    const rawValue = typeof value === "string" ? value.trim() : "";
+    if (!rawValue) {
+      return null;
     }
 
-    if (/^https?:\/\//i.test(value)) {
-      return value;
+    if (/^data:image\/[^,]+,/i.test(rawValue)) {
+      return rawValue;
     }
 
-    if (value.startsWith("//")) {
-      return `https:${value}`;
+    if (/^data:/i.test(rawValue)) {
+      return null;
     }
 
     try {
-      return new URL(value, "https://sakura-checker.jp").toString();
+      const resolvedUrl = new URL(rawValue, SAKURA_ORIGIN);
+      if (resolvedUrl.protocol !== "https:" || resolvedUrl.origin !== SAKURA_ORIGIN) {
+        return null;
+      }
+
+      return resolvedUrl.toString();
     } catch {
-      return value;
+      return null;
     }
   }
 
-  function normalizeVerdict(verdict) {
-    if (!verdict || !verdict.image) {
-      return verdict || null;
+  function normalizeImage(image) {
+    if (!image || typeof image !== "object") {
+      return null;
+    }
+
+    const src = resolveSakuraImageUrl(image.src);
+    if (!src) {
+      return null;
     }
 
     return {
-      ...verdict,
-      image: {
-        ...verdict.image,
-        src: resolveSakuraUrl(verdict.image.src),
-      },
+      ...image,
+      src,
+    };
+  }
+
+  function normalizeScore(score) {
+    if (!score || typeof score !== "object" || score.kind !== "visual-image") {
+      return score;
+    }
+
+    return {
+      ...score,
+      images: Array.isArray(score.images)
+        ? score.images.map(normalizeImage).filter(Boolean)
+        : [],
+    };
+  }
+
+  function normalizeVerdict(verdict) {
+    if (!verdict || typeof verdict !== "object") {
+      return verdict || null;
+    }
+
+    const { image: _image, ...rest } = verdict;
+    const normalizedImage = normalizeImage(verdict.image);
+    return normalizedImage ? { ...rest, image: normalizedImage } : rest;
+  }
+
+  function normalizeSuccessPayload(payload) {
+    if (!payload || typeof payload !== "object" || payload.ok !== true) {
+      return payload;
+    }
+
+    return {
+      ...payload,
+      score: normalizeScore(payload.score),
+      verdict: normalizeVerdict(payload.verdict),
     };
   }
 
@@ -100,7 +138,7 @@
       image &&
       typeof image === "object" &&
       typeof image.src === "string" &&
-      image.src.trim()
+      resolveSakuraImageUrl(image.src)
     );
   }
 
@@ -149,7 +187,18 @@
 
       return new Promise((resolve) => {
         chrome.storage.local.get([key], (result) => {
-          resolve(result[key] || null);
+          const runtimeError =
+            typeof chrome !== "undefined" && chrome.runtime
+              ? chrome.runtime.lastError
+              : null;
+          if (runtimeError) {
+            resolve(null);
+            return;
+          }
+
+          resolve(
+            result && typeof result === "object" ? result[key] || null : null
+          );
         });
       });
     }
@@ -160,7 +209,12 @@
       }
 
       return new Promise((resolve) => {
-        chrome.storage.local.set({ [key]: value }, () => resolve());
+        chrome.storage.local.set({ [key]: value }, () => {
+          if (typeof chrome !== "undefined" && chrome.runtime) {
+            void chrome.runtime.lastError;
+          }
+          resolve();
+        });
       });
     }
 
@@ -179,23 +233,25 @@
       }
 
       const fetchedAt = Date.parse(cachedValue.fetchedAt);
-      if (Number.isNaN(fetchedAt) || Date.now() - fetchedAt > ttlMs) {
+      const cacheAgeMs = Date.now() - fetchedAt;
+      if (!Number.isFinite(cacheAgeMs) || cacheAgeMs < 0 || cacheAgeMs > ttlMs) {
         return null;
       }
 
-      if (!hasValidSuccessPayload(cachedValue)) {
+      const normalizedCachedValue = normalizeSuccessPayload(cachedValue);
+      if (!hasValidSuccessPayload(normalizedCachedValue)) {
         return null;
       }
 
       return {
-        ...cachedValue,
+        ...normalizedCachedValue,
         sourceUrl: buildDetailUrlImpl(asin),
       };
     }
 
     async function write(asin, payload) {
       const cacheKey = `${keyPrefix}${asin}`;
-      await storage.set(cacheKey, payload);
+      await storage.set(cacheKey, normalizeSuccessPayload(payload));
     }
 
     return {
@@ -275,7 +331,7 @@
       fetchedAt: new Date().toISOString(),
       sourceUrl: buildDetailUrl(asin),
       score: renderedResult.score,
-      verdict: normalizeVerdict(renderedResult.verdict),
+      verdict: renderedResult.verdict,
     };
   }
 
@@ -309,7 +365,7 @@
 
   async function attemptRenderedFetch(fetchRenderedScore, options, sourceUrl) {
     try {
-      return await fetchRenderedScore(options);
+      return normalizeSuccessPayload(await fetchRenderedScore(options));
     } catch (error) {
       return createFailure(
         "network_error",
@@ -434,9 +490,7 @@
       typeof fetchRenderedScoreImpl === "function"
         ? fetchRenderedScoreImpl
         : RenderedScoreClient.fetchRenderedScore;
-    const requestKey = buildInFlightRequestKey({
-      asin,
-    });
+    const requestKey = String(asin || "");
 
     if (inFlightRequests.has(requestKey)) {
       return inFlightRequests.get(requestKey);

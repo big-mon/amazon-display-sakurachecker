@@ -5,6 +5,7 @@
   }
   root.AsinUtils = exportsObject;
 })(typeof self !== "undefined" ? self : globalThis, function () {
+  const AMAZON_ORIGIN = "https://www.amazon.co.jp";
   const PRODUCT_PATH_PATTERN = /\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i;
 
   function extractAsinFromPath(path) {
@@ -18,10 +19,13 @@
     }
 
     try {
-      const parsed = new URL(urlValue, "https://www.amazon.co.jp");
+      const parsed = new URL(urlValue, AMAZON_ORIGIN);
+      if (parsed.origin !== AMAZON_ORIGIN) {
+        return null;
+      }
       return extractAsinFromPath(parsed.pathname);
     } catch {
-      return extractAsinFromPath(urlValue);
+      return null;
     }
   }
 

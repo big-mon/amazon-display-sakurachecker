@@ -3,26 +3,63 @@ const assert = require("node:assert/strict");
 
 const apiClient = require("../background/api-client.js");
 
-function installChromeStorageStub() {
+function installChromeStorageStub({ getImpl, setImpl, onLastErrorRead } = {}) {
   const store = new Map();
+  let currentOperation = null;
+  let runtimeLastError;
+  const runtime = {};
+
+  Object.defineProperty(runtime, "lastError", {
+    configurable: true,
+    get() {
+      if (onLastErrorRead) {
+        onLastErrorRead(currentOperation);
+      }
+      return runtimeLastError;
+    },
+    set(value) {
+      runtimeLastError = value;
+    },
+  });
 
   global.chrome = {
+    runtime,
     storage: {
       local: {
         get(keys, callback) {
-          const result = {};
-          for (const key of keys) {
-            if (store.has(key)) {
-              result[key] = store.get(key);
+          currentOperation = "get";
+          try {
+            if (getImpl) {
+              getImpl({ keys, callback, runtime, store });
+              return;
             }
+
+            const result = {};
+            for (const key of keys) {
+              if (store.has(key)) {
+                result[key] = store.get(key);
+              }
+            }
+            callback(result);
+          } finally {
+            currentOperation = null;
           }
-          callback(result);
         },
         set(entries, callback) {
-          for (const [key, value] of Object.entries(entries)) {
-            store.set(key, value);
+          currentOperation = "set";
+          try {
+            if (setImpl) {
+              setImpl({ entries, callback, runtime, store });
+              return;
+            }
+
+            for (const [key, value] of Object.entries(entries)) {
+              store.set(key, value);
+            }
+            callback();
+          } finally {
+            currentOperation = null;
           }
-          callback();
         },
       },
     },
@@ -33,8 +70,96 @@ function installChromeStorageStub() {
   };
 }
 
-test("buildDetailUrl creates the Sakura Checker detail URL", () => {
+test.beforeEach(() => {
   apiClient.__testing.reset();
+});
+
+test("checkSakuraScore treats storage get runtime errors as cache misses", async () => {
+  let fetchRenderedScoreCalls = 0;
+  let getLastErrorReads = 0;
+  const cleanup = installChromeStorageStub({
+    getImpl: ({ callback, runtime }) => {
+      runtime.lastError = { message: "Storage read failed." };
+      callback();
+      runtime.lastError = undefined;
+    },
+    onLastErrorRead: (operation) => {
+      if (operation === "get") {
+        getLastErrorReads += 1;
+      }
+    },
+  });
+
+  try {
+    const result = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: false,
+      fetchRenderedScoreImpl: async () => {
+        fetchRenderedScoreCalls += 1;
+        return {
+          ok: true,
+          score: {
+            kind: "text",
+            value: "4.00",
+            suffix: "/5",
+          },
+          verdict: null,
+        };
+      },
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.cached, false);
+    assert.equal(fetchRenderedScoreCalls, 1);
+    assert.equal(getLastErrorReads, 1);
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkSakuraScore keeps a live success when storage set reports a runtime error", async () => {
+  let setLastErrorReads = 0;
+  const cleanup = installChromeStorageStub({
+    setImpl: ({ callback, runtime }) => {
+      runtime.lastError = { message: "Storage write failed." };
+      callback();
+      runtime.lastError = undefined;
+    },
+    onLastErrorRead: (operation) => {
+      if (operation === "set") {
+        setLastErrorReads += 1;
+      }
+    },
+  });
+
+  try {
+    const result = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: true,
+      fetchRenderedScoreImpl: async () => ({
+        ok: true,
+        score: {
+          kind: "text",
+          value: "4.00",
+          suffix: "/5",
+        },
+        verdict: null,
+      }),
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.cached, false);
+    assert.equal(setLastErrorReads, 1);
+  } finally {
+    cleanup();
+  }
+});
+
+test("buildDetailUrl creates the Sakura Checker detail URL", () => {
   assert.equal(
     apiClient.buildDetailUrl("B08N5WRWNW"),
     "https://sakura-checker.jp/search/B08N5WRWNW/"
@@ -42,7 +167,6 @@ test("buildDetailUrl creates the Sakura Checker detail URL", () => {
 });
 
 test("checkSakuraScore caches successful rendered responses", async () => {
-  apiClient.__testing.reset();
   const cleanup = installChromeStorageStub();
   let fetchRenderedScoreCalls = 0;
 
@@ -103,8 +227,187 @@ test("checkSakuraScore caches successful rendered responses", async () => {
   }
 });
 
+test("checkSakuraScore filters unsafe fresh score and verdict images", async () => {
+  const cleanup = installChromeStorageStub();
+
+  try {
+    const result = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: true,
+      fetchRenderedScoreImpl: async () => ({
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [
+            { src: "https://tracker.invalid/pixel.png", alt: "unsafe" },
+            { src: "/images/score.png", alt: "safe-relative" },
+            { src: "data:image/png;base64,AAAA", alt: "safe-data" },
+          ],
+          suffix: "/5",
+        },
+        verdict: {
+          kind: "visual-verdict",
+          image: {
+            src: "https://tracker.invalid/verdict.png",
+            alt: "unsafe verdict",
+          },
+          lines: ["危険", "サクラ度 90%"],
+        },
+      }),
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.score, {
+      kind: "visual-image",
+      images: [
+        { src: "https://sakura-checker.jp/images/score.png", alt: "safe-relative" },
+        { src: "data:image/png;base64,AAAA", alt: "safe-data" },
+      ],
+      suffix: "/5",
+    });
+    assert.deepEqual(result.verdict, {
+      kind: "visual-verdict",
+      lines: ["危険", "サクラ度 90%"],
+    });
+    assert.equal(result.verdict.image, undefined);
+
+    const inheritedUnsafeVerdict = Object.assign(
+      Object.create({
+        image: {
+          src: "https://tracker.invalid/inherited-verdict.png",
+          alt: "unsafe inherited verdict",
+        },
+      }),
+      {
+        kind: "visual-verdict",
+        lines: ["継承された危険"],
+      }
+    );
+    const inheritedResult = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: true,
+      fetchRenderedScoreImpl: async () => ({
+        ok: true,
+        score: {
+          kind: "text",
+          value: "4.00",
+          suffix: "/5",
+        },
+        verdict: inheritedUnsafeVerdict,
+      }),
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+    assert.equal(inheritedResult.verdict.image, undefined);
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkSakuraScore rejects and does not cache an all-unsafe score", async () => {
+  const cleanup = installChromeStorageStub();
+  let fetchRenderedScoreCalls = 0;
+
+  try {
+    const fetchRenderedScoreImpl = async () => {
+      fetchRenderedScoreCalls += 1;
+      if (fetchRenderedScoreCalls === 1) {
+        return {
+          ok: true,
+          score: {
+            kind: "visual-image",
+            images: [{ src: "https://tracker.invalid/pixel.png", alt: "unsafe" }],
+            suffix: "/5",
+          },
+          verdict: null,
+        };
+      }
+
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "safe" }],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
+    };
+
+    const first = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: true,
+      fetchRenderedScoreImpl,
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+    const second = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: false,
+      fetchRenderedScoreImpl,
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(first.ok, false);
+    assert.equal(first.code, "parse_error");
+    assert.equal(second.ok, true);
+    assert.equal(second.cached, false);
+    assert.equal(second.score.images[0].src, "data:image/png;base64,AAAA");
+    assert.equal(fetchRenderedScoreCalls, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkSakuraScore ignores future-dated cached successes and refetches", async () => {
+  const cleanup = installChromeStorageStub();
+  let fetchRenderedScoreCalls = 0;
+
+  try {
+    await apiClient.__testing.writeCache("B08N5WRWNW", {
+      ok: true,
+      fetchedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      sourceUrl: "https://sakura-checker.jp/search/B08N5WRWNW/",
+      score: {
+        kind: "text",
+        value: "1.00",
+        suffix: "/5",
+      },
+      verdict: null,
+    });
+
+    const result = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: false,
+      fetchRenderedScoreImpl: async () => {
+        fetchRenderedScoreCalls += 1;
+        return {
+          ok: true,
+          score: {
+            kind: "text",
+            value: "4.00",
+            suffix: "/5",
+          },
+          verdict: null,
+        };
+      },
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.cached, false);
+    assert.equal(result.score.value, "4.00");
+    assert.equal(fetchRenderedScoreCalls, 1);
+  } finally {
+    cleanup();
+  }
+});
+
 test("checkSakuraScore ignores malformed cached successes and refetches", async () => {
-  apiClient.__testing.reset();
   const cleanup = installChromeStorageStub();
   let fetchRenderedScoreCalls = 0;
 
@@ -145,8 +448,109 @@ test("checkSakuraScore ignores malformed cached successes and refetches", async 
   }
 });
 
+test("checkSakuraScore ignores cached successes with only unsafe score images", async () => {
+  const cleanup = installChromeStorageStub();
+  let fetchRenderedScoreCalls = 0;
+
+  try {
+    await new Promise((resolve) => {
+      global.chrome.storage.local.set(
+        {
+          "score:B08N5WRWNW": {
+            ok: true,
+            fetchedAt: new Date().toISOString(),
+            sourceUrl: "https://sakura-checker.jp/search/B08N5WRWNW/",
+            score: {
+              kind: "visual-image",
+              images: [{ src: "https://tracker.invalid/pixel.png", alt: "unsafe" }],
+              suffix: "/5",
+            },
+            verdict: null,
+          },
+        },
+        resolve
+      );
+    });
+
+    const result = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: false,
+      fetchRenderedScoreImpl: async () => {
+        fetchRenderedScoreCalls += 1;
+        return {
+          ok: true,
+          score: {
+            kind: "visual-image",
+            images: [{ src: "data:image/png;base64,AAAA", alt: "fresh" }],
+            suffix: "/5",
+          },
+          verdict: null,
+        };
+      },
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.cached, false);
+    assert.equal(result.score.images[0].src, "data:image/png;base64,AAAA");
+    assert.equal(fetchRenderedScoreCalls, 1);
+  } finally {
+    cleanup();
+  }
+});
+
+test("checkSakuraScore normalizes cached score images and removes unsafe verdict images", async () => {
+  const cleanup = installChromeStorageStub();
+  let fetchRenderedScoreCalls = 0;
+
+  try {
+    await apiClient.__testing.writeCache("B08N5WRWNW", {
+      ok: true,
+      fetchedAt: new Date().toISOString(),
+      sourceUrl: "https://sakura-checker.jp/search/B08N5WRWNW/",
+      score: {
+        kind: "visual-image",
+        images: [{ src: "/images/score.png", alt: "cached score" }],
+        suffix: "/5",
+      },
+      verdict: {
+        kind: "visual-verdict",
+        image: {
+          src: "https://tracker.invalid/verdict.png",
+          alt: "unsafe verdict",
+        },
+        lines: ["危険", "サクラ度 90%"],
+      },
+    });
+
+    const result = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: false,
+      fetchRenderedScoreImpl: async () => {
+        fetchRenderedScoreCalls += 1;
+        throw new Error("A usable cached result should not refetch.");
+      },
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.cached, true);
+    assert.deepEqual(result.score.images, [
+      { src: "https://sakura-checker.jp/images/score.png", alt: "cached score" },
+    ]);
+    assert.deepEqual(result.verdict, {
+      kind: "visual-verdict",
+      lines: ["危険", "サクラ度 90%"],
+    });
+    assert.equal(fetchRenderedScoreCalls, 0);
+  } finally {
+    cleanup();
+  }
+});
+
 test("checkSakuraScore returns blocked when rendered extraction is blocked", async () => {
-  apiClient.__testing.reset();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
@@ -164,7 +568,6 @@ test("checkSakuraScore returns blocked when rendered extraction is blocked", asy
 });
 
 test("checkSakuraScore rejects successful responses that do not include a usable score", async () => {
-  apiClient.__testing.reset();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
@@ -186,7 +589,6 @@ test("checkSakuraScore rejects successful responses that do not include a usable
 });
 
 test("checkSakuraScore accepts text-based itemsearch scores", async () => {
-  apiClient.__testing.reset();
   const result = await apiClient.checkSakuraScore({
     asin: "B091BGMKYS",
     forceRefresh: true,
@@ -213,7 +615,6 @@ test("checkSakuraScore accepts text-based itemsearch scores", async () => {
 });
 
 test("checkSakuraScore returns not_found when the product is missing", async () => {
-  apiClient.__testing.reset();
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
     forceRefresh: true,
@@ -231,7 +632,6 @@ test("checkSakuraScore returns not_found when the product is missing", async () 
 });
 
 test("checkSakuraScore falls back to an Amazon product URL search when itemsearch requires it", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -276,7 +676,6 @@ test("checkSakuraScore falls back to an Amazon product URL search when itemsearc
 });
 
 test("checkSakuraScore falls back to a product URL search when itemsearch requires it even if a product title is available", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -328,7 +727,6 @@ test("checkSakuraScore falls back to a product URL search when itemsearch requir
 });
 
 test("checkSakuraScore falls back to a product URL search after an itemsearch parse failure", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -370,7 +768,6 @@ test("checkSakuraScore falls back to a product URL search after an itemsearch pa
 });
 
 test("checkSakuraScore retries ASIN itemsearch after an ambiguous product URL search", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -434,7 +831,6 @@ test("checkSakuraScore retries ASIN itemsearch after an ambiguous product URL se
 });
 
 test("checkSakuraScore prefers a detail page score after product URL search returns only a percent score", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -495,7 +891,6 @@ test("checkSakuraScore prefers a detail page score after product URL search retu
 });
 
 test("checkSakuraScore keeps a percent score when the detail page retry fails", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -547,7 +942,6 @@ test("checkSakuraScore keeps a percent score when the detail page retry fails", 
 });
 
 test("checkSakuraScore uses the provided product URL when itemsearch parsing fails", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -593,7 +987,6 @@ test("checkSakuraScore uses the provided product URL when itemsearch parsing fai
 });
 
 test("checkSakuraScore returns the fallback error when URL-search retry also fails", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -626,7 +1019,6 @@ test("checkSakuraScore returns the fallback error when URL-search retry also fai
 });
 
 test("checkSakuraScore stops after the ASIN itemsearch retry still requires a product URL", async () => {
-  apiClient.__testing.reset();
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -656,7 +1048,6 @@ test("checkSakuraScore stops after the ASIN itemsearch retry still requires a pr
 });
 
 test("checkSakuraScore deduplicates concurrent requests for the same ASIN", async () => {
-  apiClient.__testing.reset();
   let fetchRenderedScoreCalls = 0;
   let resolveRequest = null;
 
@@ -700,7 +1091,6 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN", asyn
 });
 
 test("checkSakuraScore deduplicates concurrent requests for the same ASIN even when product URLs differ and URL fallback is required", async () => {
-  apiClient.__testing.reset();
   const startedRequests = [];
   const resolvers = [];
 
@@ -776,7 +1166,6 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN even w
 });
 
 test("checkSakuraScore serializes concurrent requests for different ASINs", async () => {
-  apiClient.__testing.reset();
   const startedAsins = [];
   const resolvers = [];
   let activeRequests = 0;
@@ -840,7 +1229,6 @@ test("checkSakuraScore serializes concurrent requests for different ASINs", asyn
 });
 
 test("checkSakuraScore continues the queue after a request throws", async () => {
-  apiClient.__testing.reset();
   const startedAsins = [];
 
   const fetchRenderedScoreImpl = async ({ asin }) => {
@@ -884,7 +1272,6 @@ test("checkSakuraScore continues the queue after a request throws", async () => 
 });
 
 test("checkSakuraScore applies a global request interval between ASINs", async () => {
-  apiClient.__testing.reset();
   const waits = [];
 
   const fetchRenderedScoreImpl = async () => ({

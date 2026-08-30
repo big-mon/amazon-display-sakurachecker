@@ -19,3 +19,29 @@ test("extractAsinFromUrl parses canonical and mobile product URLs", () => {
     "B095JGJCC7"
   );
 });
+
+test("extractAsinFromUrl rejects an Amazon-shaped path on an external host", () => {
+  assert.equal(
+    asinUtils.extractAsinFromUrl("https://evil.example/dp/B095JGJCC7"),
+    null
+  );
+});
+
+test("extractAsinFromUrl requires HTTPS Amazon origin and supports relative product URLs", () => {
+  assert.equal(
+    asinUtils.extractAsinFromUrl("https://www.amazon.co.jp/dp/B095JGJCC7"),
+    "B095JGJCC7"
+  );
+  assert.equal(
+    asinUtils.extractAsinFromUrl("/dp/B095JGJCC7?ref_=さくら"),
+    "B095JGJCC7"
+  );
+  assert.equal(
+    asinUtils.extractAsinFromUrl("http://www.amazon.co.jp/dp/B095JGJCC7"),
+    null
+  );
+  assert.equal(
+    asinUtils.extractAsinFromUrl("https://[invalid/dp/B095JGJCC7"),
+    null
+  );
+});
