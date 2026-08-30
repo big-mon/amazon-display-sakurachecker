@@ -5,6 +5,8 @@
   }
   root.RenderedScoreParser = exportsObject;
 })(typeof self !== "undefined" ? self : globalThis, function () {
+  const SAKURA_ORIGIN = "https://sakura-checker.jp";
+
   function createFailure(code, message, retryable) {
     return {
       ok: false,
@@ -33,6 +35,15 @@
       kind: "text-verdict",
       lines: normalizedLines,
     };
+  }
+
+  function createVerdict(image, lines) {
+    const textVerdict = createTextVerdict(lines);
+    if (!image || !textVerdict) {
+      return textVerdict;
+    }
+
+    return { kind: "visual-verdict", image, lines: textVerdict.lines };
   }
 
   function buildRequestedAsinPattern(requestedAsin) {
@@ -98,13 +109,18 @@
     return "";
   }
 
-  function resolveUrl(context, value) {
-    if (!value) {
-      return value;
+  function resolveImageUrl(context, value) {
+    const rawValue = typeof value === "string" ? value.trim() : "";
+    if (!rawValue) {
+      return null;
     }
 
-    if (/^(?:data:|https?:|chrome-extension:)/i.test(value)) {
-      return value;
+    if (/^data:image\/[^,]+,/i.test(rawValue)) {
+      return rawValue;
+    }
+
+    if (/^data:/i.test(rawValue)) {
+      return null;
     }
 
     const baseUrl =
@@ -113,13 +129,18 @@
       (typeof location !== "undefined" ? location.href : null);
 
     if (!baseUrl) {
-      return value;
+      return null;
     }
 
     try {
-      return new URL(value, baseUrl).toString();
+      const resolvedUrl = new URL(rawValue, baseUrl);
+      if (resolvedUrl.protocol !== "https:" || resolvedUrl.origin !== SAKURA_ORIGIN) {
+        return null;
+      }
+
+      return resolvedUrl.toString();
     } catch {
-      return value;
+      return null;
     }
   }
 
@@ -128,7 +149,12 @@
       return null;
     }
 
-    const src = resolveUrl(context, image.src || image.getAttribute("src") || "");
+    const attributeSrc =
+      typeof image.getAttribute === "function" ? image.getAttribute("src") : null;
+    const src = resolveImageUrl(
+      context,
+      attributeSrc !== null ? attributeSrc : image.src || ""
+    );
     if (!src) {
       return null;
     }
@@ -140,11 +166,15 @@
   }
 
   function getRatingImages(context, ratingNodes) {
-    const imageGroups = Array.from(ratingNodes, (ratingNode) =>
-      Array.from(ratingNode.querySelectorAll("img"))
-        .map((image) => getImagePayload(context, image))
-        .filter(Boolean)
-    ).filter((group) => group.length);
+    const imageGroups = Array.from(ratingNodes, (ratingNode) => {
+      const images = Array.from(ratingNode.querySelectorAll("img"));
+      if (!images.length) {
+        return [];
+      }
+
+      const payloads = images.map((image) => getImagePayload(context, image));
+      return payloads.every(Boolean) ? payloads : [];
+    }).filter((group) => group.length);
 
     if (!imageGroups.length) {
       return [];
@@ -252,7 +282,7 @@
       return true;
     });
 
-    if (!detectedHiddenItem || visibleItemInfos.length === itemInfos.length) {
+    if (!detectedHiddenItem) {
       return null;
     }
 
@@ -371,14 +401,7 @@
         images,
         suffix: "/5",
       },
-      verdict:
-        verdictImage && verdictLines.length
-          ? {
-              kind: "visual-verdict",
-              image: verdictImage,
-              lines: verdictLines,
-            }
-          : null,
+      verdict: createVerdict(verdictImage, verdictLines),
     };
   }
 
@@ -611,12 +634,12 @@
     }
 
     const percentRoot = scoreRoot.querySelector(".sakura-num-per");
-    const images = Array.from(scoreRoot.querySelectorAll("img"))
-      .filter((image) => !percentRoot || !percentRoot.contains(image))
-      .map((image) => getImagePayload(context, image))
-      .filter(Boolean);
+    const scoreImages = Array.from(scoreRoot.querySelectorAll("img")).filter(
+      (image) => !percentRoot || !percentRoot.contains(image)
+    );
+    const images = scoreImages.map((image) => getImagePayload(context, image));
 
-    if (!images.length) {
+    if (!scoreImages.length || !images.every(Boolean)) {
       return null;
     }
 
@@ -632,14 +655,7 @@
         images,
         suffix: "%",
       },
-      verdict:
-        verdictImage && verdictLine
-          ? {
-              kind: "visual-verdict",
-              image: verdictImage,
-              lines: [verdictLine],
-            }
-          : null,
+      verdict: createVerdict(verdictImage, verdictLine ? [verdictLine] : []),
     };
   }
 
@@ -657,7 +673,6 @@
     const bodyText = normalizeText(
       (context.root.body && context.root.body.textContent) || context.root.textContent || ""
     );
-    const bodyTextLower = bodyText.toLowerCase();
     const blockedPatterns = [
       /too many requests/i,
       /access denied/i,
@@ -673,7 +688,7 @@
     if (
       blockedPatterns.some(
         (pattern) =>
-          pattern.test(title) || pattern.test(bodyTextLower) || pattern.test(bodyText)
+          pattern.test(title) || pattern.test(bodyText)
       )
     ) {
       return createFailure(
@@ -785,11 +800,7 @@
     }
 
     const ambiguousLegacy = extractLegacyScore(context, { allowAmbiguousMatches: true });
-    if (ambiguousLegacy && ambiguousLegacy.ok) {
-      return ambiguousLegacy;
-    }
-
-    if (ambiguousLegacy && ambiguousLegacy.ok === false) {
+    if (ambiguousLegacy) {
       return ambiguousLegacy;
     }
 

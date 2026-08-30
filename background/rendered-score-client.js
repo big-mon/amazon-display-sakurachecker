@@ -377,10 +377,7 @@
         if (tab && tab.status === "complete") {
           cleanup();
           resolve(tab);
-          return true;
         }
-
-        return false;
       }
 
       function handleUpdated(updatedTabId, changeInfo, tab) {

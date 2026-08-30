@@ -19,8 +19,16 @@
     getCurrentProductUrl(asin) {
       const canonical = document.querySelector('link[rel="canonical"]');
       const canonicalHref = canonical && canonical.getAttribute("href");
-      if (canonicalHref) {
-        return canonicalHref;
+      if (asin && canonicalHref && window.AsinUtils) {
+        try {
+          const canonicalUrl = new URL(canonicalHref, window.location.href);
+          const canonicalAsin = window.AsinUtils.extractAsinFromUrl(canonicalUrl.href);
+          if (canonicalAsin === asin) {
+            return canonicalUrl.href;
+          }
+        } catch {
+          // Fall back to the current ASIN when the canonical URL cannot be parsed.
+        }
       }
 
       return asin ? `https://www.amazon.co.jp/dp/${asin}` : null;
@@ -112,7 +120,7 @@
 
     observePageChanges() {
       let previousUrl = window.location.href;
-      const observer = new MutationObserver(() => {
+      const checkForPageChanges = () => {
         if (window.location.href !== previousUrl) {
           previousUrl = window.location.href;
           this.refreshForCurrentPage();
@@ -122,12 +130,13 @@
         if (this.currentAsin && !document.getElementById("sakura-checker-result")) {
           this.refreshForCurrentPage();
         }
-      });
+      };
 
-      observer.observe(document.documentElement, {
+      new MutationObserver(checkForPageChanges).observe(document.documentElement, {
         childList: true,
         subtree: true,
       });
+      window.setInterval(checkForPageChanges, 1000);
     }
   }
 

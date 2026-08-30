@@ -18,14 +18,9 @@ function runSearchScript(details, options = {}) {
 
   const input = hasInput
     ? {
-        attributes: new Map(),
         value: "",
-        getAttribute(name) {
-          return this.attributes.has(name) ? this.attributes.get(name) : null;
-        },
         setAttribute(name, value) {
           const normalizedValue = String(value);
-          this.attributes.set(name, normalizedValue);
           if (name === "value") {
             this.value = normalizedValue;
           }
@@ -49,7 +44,6 @@ function runSearchScript(details, options = {}) {
     : null;
   const previousDocument = global.document;
   const previousSelf = global.self;
-  const previousEvent = global.Event;
 
   global.document = {
     querySelector(selector) {
@@ -69,20 +63,12 @@ function runSearchScript(details, options = {}) {
         },
       }
     : {};
-  global.Event = class Event {
-    constructor(type, init = {}) {
-      this.type = type;
-      this.bubbles = Boolean(init.bubbles);
-      this.cancelable = Boolean(init.cancelable);
-    }
-  };
 
   try {
     return details.func(...details.args);
   } finally {
     global.document = previousDocument;
     global.self = previousSelf;
-    global.Event = previousEvent;
   }
 }
 
@@ -100,7 +86,6 @@ function installChromeStub({
   const requestSubmitCalls = [];
   const submitCalls = [];
   let nextTabId = 1;
-  let executeCalls = 0;
   let parserInjectionCalls = 0;
   let extractCalls = 0;
   const executeDetails = [];
@@ -148,7 +133,6 @@ function installChromeStub({
     },
     scripting: {
       executeScript(details, callback) {
-        executeCalls += 1;
         executeDetails.push(details);
         if (Array.isArray(details.files)) {
           parserInjectionCalls += 1;
@@ -205,9 +189,6 @@ function installChromeStub({
     removeCalls,
     requestSubmitCalls,
     submitCalls,
-    get executeCalls() {
-      return executeCalls;
-    },
     get extractCalls() {
       return extractCalls;
     },
