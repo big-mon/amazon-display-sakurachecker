@@ -42,11 +42,11 @@ Add these repository secrets in GitHub: `Settings -> Secrets and variables -> Ac
 - `CHROME_CLIENT_SECRET`
 - `CHROME_REFRESH_TOKEN`
 
-The workflow now calls the Chrome Web Store API directly so upload failures include the API response body and a `fetchStatus` snapshot in the GitHub Actions log.
+The workflow calls the Chrome Web Store API directly so upload failures include the API response body and a `fetchStatus` snapshot in the GitHub Actions log.
 
 ## Release flow
 
-1. Update `package.json` to the release version.
+1. Set the release version with `npm version <new-version> --no-git-tag-version`, replacing `<new-version>` with the target version. This updates `package.json` and the root package versions in `package-lock.json`.
 2. Run `npm ci`, then install the required browser with `npx playwright install chromium`.
 3. Run `npm run test:deploy` locally; this full release validation is required, and `package.json` defines the current suite.
 4. Run `npm run zip` to sync `manifest.json` and generate `extension.zip`.
@@ -57,7 +57,7 @@ The workflow now calls the Chrome Web Store API directly so upload failures incl
 
 Pushes to `main` without a net `package.json` version change across the pushed commit range are complete only when the workflow reports the explicit successful skip; no store submission is expected.
 
-GitHub-hosted Ubuntu runners cannot execute the Sakura Checker live or extension E2E checks because `sakura-checker.jp` blocks their requests with HTTP 403 (`Service unavailable` / `The request is blocked`). Therefore, the required live and E2E checks remain part of the local `npm run test:deploy` release validation, while GitHub Actions reruns deterministic tests and packaging only. A manually dispatched workflow with `dry_run` enabled validates the hosted deterministic-test and packaging path without uploading to the Chrome Web Store.
+Run the サクラチェッカー live and extension E2E checks locally with `npm run test:deploy`; requests from GitHub-hosted runners may be rejected with HTTP 403. GitHub Actions runs deterministic tests and packaging. A manually dispatched workflow with `dry_run` enabled validates the hosted deterministic-test and packaging path without uploading to the Chrome Web Store.
 
 ## Local packaging
 
@@ -70,7 +70,7 @@ npm run zip
 
 The command syncs the manifest version and writes `extension.zip` to the repository root. Upload that zip when you need to submit the extension manually.
 
-`npm run test:package` validates ZIP contents, version synchronization, and missing-file failures in a temporary directory. It is also included in `npm test`, so dependency changes are checked before release. Packaging uses `fflate` with no transitive npm dependencies and does not require an OS-specific ZIP command or Python.
+`npm run test:package` validates ZIP contents, version synchronization, and missing-file failures in a temporary directory. It is also included in `npm test`, so dependency changes are checked before release.
 
 ## Notes
 
