@@ -2,6 +2,7 @@
 
 ## Start here
 
+- Use Node.js 24 LTS for local checks and packaging, matching CI and deployment.
 - Before running Node-based checks, install from the committed lockfile with `npm ci`.
 - Live or extension E2E work: before the first run in an environment, install its browser with `npx playwright install chromium`.
 - Product behavior or `README.md` changes: read [README.md](./README.md).
@@ -32,6 +33,7 @@ Apply every matching row. Verification is complete only when every required comm
 | Docs/manual checks only | Resolve every changed relative link; verify every changed command against `package.json` or workflows; trace every changed behavior, privacy, permission, storage, and network claim to code or `manifest.json` |
 | JS/runtime or deterministic fixtures | `npm test` |
 | Dependency/lockfile | `npm ci`, `npm test`, `npm audit`, `npm audit --omit=dev` |
+| ZIP packaging implementation | `npm run test:package` (also included in `npm test`) |
 | Live parser behavior | `npm run test:live` |
 | Extension UI/integration | `npm run test:e2e-extension` plus relevant manual scenarios |
 | Release/package workflow | `npm run test:deploy`, then `npm run zip` only when packaging is intended |
