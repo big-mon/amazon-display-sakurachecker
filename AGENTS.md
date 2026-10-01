@@ -14,11 +14,11 @@
 
 ## Runtime flow
 
-Amazon content scripts extract the product ASIN and render the panel, then message `background.js`. The service worker checks the TTL-controlled local cache and, on a miss, opens an inactive Sakura Checker tab to inspect rendered results: Base64-ASIN `itemsearch`, detail page, and—only when required—the Amazon product-URL fallback. The temporary tab is closed after inspection.
+Amazon content scripts extract the product ASIN and render the panel, then message `background.js`. The service worker checks the TTL-controlled local cache and, on a miss, opens an inactive サクラチェッカー tab to inspect rendered results: Base64-ASIN `itemsearch`, detail page, and—only when required—the Amazon product-URL fallback. The temporary tab is closed after inspection.
 
 ## Invariants and safety boundaries
 
-- Keep external communication limited to Sakura Checker. Never send Amazon page/review bodies or add telemetry.
+- Keep external communication limited to サクラチェッカー. Never send Amazon page/review bodies or add telemetry.
 - Preserve product-page-only score fetching and panel rendering; content scripts may load on other Amazon.co.jp pages but must remain inert there. Preserve cache validation/TTL, request coordination, temporary-tab cleanup, and cached-only `再取得` behavior.
 - Do not broaden `manifest.json` permissions or host access without explicit justification.
 - Keep deterministic gates free of live-site assumptions. `test:browser-compare` is opt-in investigation, never a required gate.
