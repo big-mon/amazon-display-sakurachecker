@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { zipSync } = require("fflate");
 
 const rootDir = path.join(__dirname, "..");
 const outputZipPath = path.join(rootDir, "extension.zip");
@@ -13,6 +14,7 @@ const entries = [
   { type: "file", relativePath: "manifest.json" },
   { type: "file", relativePath: "background.js" },
   { type: "file", relativePath: "content.js" },
+  { type: "file", relativePath: "LICENSE" },
   { type: "directory", relativePath: "background" },
   { type: "directory", relativePath: "content" },
   { type: "directory", relativePath: "icons" },
@@ -58,47 +60,35 @@ function validateSyncedVersion() {
   }
 }
 
-async function createZip() {
+function createZip() {
   ensureEntriesExist();
   syncManifestVersion();
   validateSyncedVersion();
-  const { ZipArchive } = await import("archiver");
-
-  if (fs.existsSync(outputZipPath)) {
-    fs.unlinkSync(outputZipPath);
-  }
-
-  await new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(outputZipPath);
-    const archive = new ZipArchive({ zlib: { level: 9 } });
-
-    output.on("close", resolve);
-    output.on("error", reject);
-    archive.on("warning", reject);
-    archive.on("error", reject);
-
-    archive.pipe(output);
-
-    for (const entry of entries) {
-      const absolutePath = path.join(rootDir, entry.relativePath);
-      const archivePath = normalizeArchivePath(entry.relativePath);
-      if (entry.type === "file") {
-        archive.file(absolutePath, { name: archivePath });
-      } else {
-        archive.directory(absolutePath, archivePath);
-      }
+  const files = entries.flatMap(({ type, relativePath }) => {
+    if (type === "file") {
+      return [relativePath];
     }
+    return fs.readdirSync(path.join(rootDir, relativePath), { recursive: true })
+      .map((file) => path.join(relativePath, file))
+      .filter((file) => fs.lstatSync(path.join(rootDir, file)).isFile());
+  }).sort();
+  const archiveFiles = Object.fromEntries(files.map((file) => [
+    normalizeArchivePath(file), fs.readFileSync(path.join(rootDir, file)),
+  ]));
 
-    const finalizeResult = archive.finalize();
-    if (finalizeResult && typeof finalizeResult.catch === "function") {
-      finalizeResult.catch(reject);
-    }
-  });
+  // ponytail: this small extension fits in memory; use streaming if assets grow large.
+  // Fixed entry timestamps and sorted paths make packaging independent of checkout mtimes.
+  fs.writeFileSync(outputZipPath, zipSync(archiveFiles, {
+    level: 9,
+    mtime: new Date(1980, 0, 1),
+  }));
 
   console.log(`Created ${outputZipPath}`);
 }
 
-createZip().catch((error) => {
+try {
+  createZip();
+} catch (error) {
   console.error(`Failed to create extension zip: ${error.message}`);
   process.exit(1);
-});
+}

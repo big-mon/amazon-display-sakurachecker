@@ -4,6 +4,8 @@
 
 This repository uses GitHub Actions to submit the Chrome extension to the Chrome Web Store when a version bump is pushed to `main`.
 
+Use Node.js 24 LTS for local checks and packaging, matching CI and deployment.
+
 ## Required setup
 
 ### 1. Register the extension in Chrome Web Store
@@ -68,8 +70,10 @@ npm run zip
 
 The command syncs the manifest version and writes `extension.zip` to the repository root. Upload that zip when you need to submit the extension manually.
 
+`npm run test:package` validates ZIP contents, version synchronization, and missing-file failures in a temporary directory. It is also included in `npm test`, so dependency changes are checked before release. Packaging uses `fflate` with no transitive npm dependencies and does not require an OS-specific ZIP command or Python.
+
 ## Notes
 
 - The initial store registration must be done manually.
-- The workflow packages only extension runtime files and excludes tests and debug pages.
+- The workflow packages extension runtime files and `LICENSE`, excluding tests and debug pages.
 - Store review itself is handled by Google after the submission is uploaded.
