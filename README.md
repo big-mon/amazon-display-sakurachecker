@@ -93,10 +93,11 @@ URL 検索後の結果に応じて詳細ページの取得や ASIN 検索の再�
 `manifest.json` で要求している権限は次のとおりです。
 
 - `storage`: Sakura Checker の取得結果を最大 12 時間再利用するため
-- `tabs`: Sakura Checker の描画後 DOM を読むために、`active: false` の一時タブを短時間作成して閉じるため
 - `scripting`: 一時タブ上の Sakura Checker ページへスクリプトを注入し、描画後の DOM を読み取るため
 - `https://www.amazon.co.jp/*`: Amazon.co.jp の商品ページで拡張を動かし、ASIN を読み取って表示 UI を挿入するため
 - `https://sakura-checker.jp/*`: Sakura Checker の商品ページを取得し、評価画像と判定情報を表示するため
+
+Sakura Checker の非アクティブな一時タブの作成・ロード待機・終了には、`tabs` 権限は不要です。描画後 DOM の読み取りには、上記の `scripting` と Sakura Checker のホスト権限を使います。
 
 ### 制限事項
 
