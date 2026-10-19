@@ -8,7 +8,6 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://www.amazon.co.jp/*",
     "https://sakura-checker.jp/*"
   ],
   "background": {

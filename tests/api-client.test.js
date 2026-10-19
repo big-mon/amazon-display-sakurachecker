@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const apiClient = require("../background/api-client.js");
 
-function installChromeStorageStub({ getImpl, setImpl, onLastErrorRead } = {}) {
+function installChromeStorageStub({ getImpl, setImpl, onLastErrorRead, removedKeys } = {}) {
   const store = new Map();
   let currentOperation = null;
   let runtimeLastError;
@@ -55,6 +55,21 @@ function installChromeStorageStub({ getImpl, setImpl, onLastErrorRead } = {}) {
 
             for (const [key, value] of Object.entries(entries)) {
               store.set(key, value);
+            }
+            callback();
+          } finally {
+            currentOperation = null;
+          }
+        },
+        remove(keys, callback) {
+          currentOperation = "remove";
+          try {
+            const keyList = Array.isArray(keys) ? keys : [keys];
+            if (removedKeys) {
+              removedKeys.push(...keyList);
+            }
+            for (const key of keyList) {
+              store.delete(key);
             }
             callback();
           } finally {
@@ -119,7 +134,7 @@ test("checkSakuraScore treats storage get runtime errors as cache misses", async
   }
 });
 
-test("checkSakuraScore keeps a live success when storage set reports a runtime error", async () => {
+test("checkSakuraScore does not report success when storage set reports a runtime error", async () => {
   let setLastErrorReads = 0;
   const cleanup = installChromeStorageStub({
     setImpl: ({ callback, runtime }) => {
@@ -151,8 +166,9 @@ test("checkSakuraScore keeps a live success when storage set reports a runtime e
       randomImpl: () => 0,
     });
 
-    assert.equal(result.ok, true);
-    assert.equal(result.cached, false);
+    assert.equal(result.ok, false);
+    assert.equal(result.code, "network_error");
+    assert.equal(result.message, "Storage write failed.");
     assert.equal(setLastErrorReads, 1);
   } finally {
     cleanup();
@@ -598,6 +614,78 @@ test("checkSakuraScore normalizes cached score images and removes unsafe verdict
   }
 });
 
+test("checkSakuraScore does not try another fetch when extraction returns parse_error", async () => {
+  const calls = [];
+
+  const result = await apiClient.checkSakuraScore({
+    asin: "B095JGJCC7",
+    productUrl: "https://www.amazon.co.jp/dp/B095JGJCC7",
+    forceRefresh: true,
+    fetchRenderedScoreImpl: async (options) => {
+      calls.push(options);
+      return {
+        ok: false,
+        code: "parse_error",
+        message: "Could not locate a rendered Sakura Checker score.",
+      };
+    },
+    waitImpl: async () => {},
+    randomImpl: () => 0,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "parse_error");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].urlSearchProductUrl, undefined);
+});
+
+test("checkSakuraScore deletes an expired score entry when it is read", async () => {
+  const removedKeys = [];
+  const cleanup = installChromeStorageStub({ removedKeys });
+  let fetchRenderedScoreCalls = 0;
+
+  try {
+    await apiClient.__testing.writeCache("B08N5WRWNW", {
+      ok: true,
+      fetchedAt: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(),
+      sourceUrl: "https://sakura-checker.jp/search/B08N5WRWNW/",
+      score: {
+        kind: "text",
+        value: "1.00",
+        suffix: "/5",
+      },
+      verdict: null,
+    });
+
+    const result = await apiClient.checkSakuraScore({
+      asin: "B08N5WRWNW",
+      forceRefresh: false,
+      fetchRenderedScoreImpl: async () => {
+        fetchRenderedScoreCalls += 1;
+        return {
+          ok: true,
+          score: {
+            kind: "text",
+            value: "4.00",
+            suffix: "/5",
+          },
+          verdict: null,
+        };
+      },
+      waitImpl: async () => {},
+      randomImpl: () => 0,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.cached, false);
+    assert.equal(result.score.value, "4.00");
+    assert.equal(fetchRenderedScoreCalls, 1);
+    assert.deepEqual(removedKeys, ["score:B08N5WRWNW"]);
+  } finally {
+    cleanup();
+  }
+});
+
 test("checkSakuraScore returns blocked when rendered extraction is blocked", async () => {
   const result = await apiClient.checkSakuraScore({
     asin: "B08N5WRWNW",
@@ -774,7 +862,7 @@ test("checkSakuraScore falls back to a product URL search when itemsearch requir
   ]);
 });
 
-test("checkSakuraScore falls back to a product URL search after an itemsearch parse failure", async () => {
+test("checkSakuraScore does not search by product URL after an itemsearch parse failure", async () => {
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -783,39 +871,22 @@ test("checkSakuraScore falls back to a product URL search after an itemsearch pa
     forceRefresh: true,
     fetchRenderedScoreImpl: async (options) => {
       calls.push(options);
-
-      if (calls.length < 2) {
-        return {
-          ok: false,
-          code: "parse_error",
-          message: "Could not extract a rendered Sakura Checker score.",
-        };
-      }
-
       return {
-        ok: true,
-        score: {
-          kind: "visual-image",
-          images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
-          suffix: "/5",
-        },
-        verdict: null,
+        ok: false,
+        code: "parse_error",
+        message: "Could not extract a rendered Sakura Checker score.",
       };
     },
     waitImpl: async () => {},
     randomImpl: () => 0,
   });
 
-  assert.equal(result.ok, true);
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1], {
-    asin: "B0D5RJ5BDX",
-    sourceUrl: "https://sakura-checker.jp/search/B0D5RJ5BDX/",
-    urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
-  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "parse_error");
+  assert.equal(calls.length, 1);
 });
 
-test("checkSakuraScore retries ASIN itemsearch after an ambiguous product URL search", async () => {
+test("checkSakuraScore stops when the product URL search returns parse_error", async () => {
   const calls = [];
 
   const result = await apiClient.checkSakuraScore({
@@ -833,34 +904,18 @@ test("checkSakuraScore retries ASIN itemsearch after an ambiguous product URL se
         };
       }
 
-      if (calls.length === 2) {
-        return {
-          ok: false,
-          code: "parse_error",
-          message: "Could not locate the requested product in Sakura Checker results.",
-        };
-      }
-
       return {
-        ok: true,
-        score: {
-          kind: "text",
-          value: "4.99",
-          suffix: "/5",
-        },
-        verdict: {
-          kind: "text-verdict",
-          lines: ["蜷域ｼ", "繧ｵ繧ｯ繝ｩ蠎ｦ 0%"],
-        },
+        ok: false,
+        code: "parse_error",
+        message: "Could not locate the requested product in Sakura Checker results.",
       };
     },
     waitImpl: async () => {},
     randomImpl: () => 0,
   });
 
-  assert.equal(result.ok, true);
-  assert.equal(result.score.kind, "text");
-  assert.equal(result.score.value, "4.99");
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "parse_error");
   assert.deepEqual(calls, [
     {
       asin: "B0FPWXKNCK",
@@ -870,10 +925,6 @@ test("checkSakuraScore retries ASIN itemsearch after an ambiguous product URL se
       asin: "B0FPWXKNCK",
       sourceUrl: "https://sakura-checker.jp/search/B0FPWXKNCK/",
       urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0FPWXKNCK",
-    },
-    {
-      asin: "B0FPWXKNCK",
-      sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjBGUFdYS05DSw==",
     },
   ]);
 });
@@ -987,51 +1038,6 @@ test("checkSakuraScore keeps a percent score when the detail page retry fails", 
     "https://sakura-checker.jp/search/B0MODERN42/",
     "https://sakura-checker.jp/search/B0MODERN42/",
   ]);
-});
-
-test("checkSakuraScore uses the provided product URL when itemsearch parsing fails", async () => {
-  const calls = [];
-
-  const result = await apiClient.checkSakuraScore({
-    asin: "B0D5RJ5BDX",
-    productUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
-    forceRefresh: true,
-    fetchRenderedScoreImpl: async (options) => {
-      calls.push(options);
-
-      if (calls.length === 1) {
-        return {
-          ok: false,
-          code: "parse_error",
-          message: "Could not extract a rendered Sakura Checker score.",
-        };
-      }
-
-      return {
-        ok: true,
-        score: {
-          kind: "visual-image",
-          images: [{ src: "data:image/png;base64,AAAA", alt: "score" }],
-          suffix: "/5",
-        },
-        verdict: null,
-      };
-    },
-    waitImpl: async () => {},
-    randomImpl: () => 0,
-  });
-
-  assert.equal(result.ok, true);
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls[0], {
-    asin: "B0D5RJ5BDX",
-    sourceUrl: "https://sakura-checker.jp/itemsearch/?word=QjBENVJKNUJEWA==",
-  });
-  assert.deepEqual(calls[1], {
-    asin: "B0D5RJ5BDX",
-    sourceUrl: "https://sakura-checker.jp/search/B0D5RJ5BDX/",
-    urlSearchProductUrl: "https://www.amazon.co.jp/dp/B0D5RJ5BDX",
-  });
 });
 
 test("checkSakuraScore returns the fallback error when URL-search retry also fails", async () => {
@@ -1177,8 +1183,8 @@ test("checkSakuraScore deduplicates concurrent requests for the same ASIN even w
 
   resolvers[0]({
     ok: false,
-    code: "parse_error",
-    message: "Could not extract a rendered Sakura Checker score.",
+    code: "url_search_required",
+    message: "Sakura Checker asked for an Amazon product URL search.",
   });
 
   await new Promise((resolve) => setImmediate(resolve));

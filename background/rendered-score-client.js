@@ -298,11 +298,6 @@
           input.value = submittedProductUrl;
           input.setAttribute("value", submittedProductUrl);
 
-          if (typeof self.setactionsearchForm === "function") {
-            self.setactionsearchForm(true);
-            return { ok: true, method: "setactionsearchForm" };
-          }
-
           const form = document.querySelector("#searchForm");
           if (!form) {
             return {
@@ -487,15 +482,13 @@
       if (normalizedProductUrl) {
         await submitUrlSearch(tab.id, normalizedProductUrl, effectiveLoadTimeoutMs);
       }
-      const renderDeadline = Date.now() + effectiveRenderTimeoutMs;
       await injectParserWithRetry(tab.id, {
         timeoutMs: effectiveRenderTimeoutMs,
         pollIntervalMs,
       });
-      const remainingRenderTimeoutMs = Math.max(0, renderDeadline - Date.now());
       return await pollExtractedScore(tab.id, {
         asin,
-        timeoutMs: remainingRenderTimeoutMs,
+        timeoutMs: effectiveRenderTimeoutMs,
         pollIntervalMs,
       });
     } finally {

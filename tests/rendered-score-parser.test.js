@@ -478,6 +478,37 @@ test("extractRenderedScore can use the modern summary even when unrelated legacy
   assert.equal(result.verdict.image.src, "https://sakura-checker.jp/images/sakura_lv00.png");
 });
 
+test("extractRenderedScore reports blocked for the service-unavailable response", () => {
+  const document = parseDocument(
+    fixtures.serviceUnavailableHtml,
+    "https://sakura-checker.jp/search/B095JGJCC7/"
+  );
+  const result = renderedParser.extractRenderedScore(document, "B095JGJCC7");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "blocked");
+  assert.equal(result.retryable, false);
+});
+
+test("extractRenderedScore keeps a score when block words are ordinary text or script content", () => {
+  const html = fixtures.itemSearchResultHtml.replace(
+    "</body>",
+    `<p>forbidden captcha しばらく待ってから確認してください。</p>
+     <script>The request is blocked.</script>
+     </body>`
+  );
+  const document = parseDocument(
+    html,
+    "https://sakura-checker.jp/itemsearch/?word=QjA5MUJHTUtZUw=="
+  );
+  const result = renderedParser.extractRenderedScore(document, "B091BGMKYS");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.score.kind, "text");
+  assert.equal(result.score.value, "1.93");
+  assert.equal(result.score.suffix, "/5");
+});
+
 test("extractRenderedScore reports blocked for rate-limit or captcha pages", () => {
   const document = parseDocument(
     fixtures.renderedBlockedHtml,

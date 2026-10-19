@@ -93,22 +93,6 @@
     return "";
   }
 
-  function currentTitle(context) {
-    try {
-      if (typeof context.root.title === "string" && context.root.title) {
-        return context.root.title;
-      }
-    } catch {
-      // Ignore title access issues and fall back.
-    }
-
-    if (typeof document !== "undefined" && typeof document.title === "string") {
-      return document.title;
-    }
-
-    return "";
-  }
-
   function resolveImageUrl(context, value) {
     const rawValue = typeof value === "string" ? value.trim() : "";
     if (!rawValue) {
@@ -659,6 +643,25 @@
     };
   }
 
+  function textExcludingScripts(node) {
+    if (!node) {
+      return "";
+    }
+
+    const nodeName = String(node.nodeName || "").toLowerCase();
+    if (nodeName === "script" || nodeName === "style") {
+      return "";
+    }
+
+    if (!node.childNodes || node.childNodes.length === 0) {
+      return node.textContent || "";
+    }
+
+    return Array.from(node.childNodes)
+      .map((child) => textExcludingScripts(child))
+      .join(" ");
+  }
+
   function detectBlockedPage(context) {
     const pathname = currentPathname(context);
     if (/\/error\/(?:accessdenied|forbidden|blocked|captcha)\//i.test(pathname)) {
@@ -669,28 +672,10 @@
       );
     }
 
-    const title = normalizeText(currentTitle(context)).toLowerCase();
-    const bodyText = normalizeText(
-      (context.root.body && context.root.body.textContent) || context.root.textContent || ""
+    const pageText = normalizeText(
+      textExcludingScripts(context.root.body || context.root)
     );
-    const blockedPatterns = [
-      /too many requests/i,
-      /access denied/i,
-      /forbidden/i,
-      /captcha/i,
-      /recaptcha/i,
-      /アクセスが集中/i,
-      /アクセス制限/i,
-      /しばらく待/i,
-      /botではないこと/i,
-    ];
-
-    if (
-      blockedPatterns.some(
-        (pattern) =>
-          pattern.test(title) || pattern.test(bodyText)
-      )
-    ) {
+    if (pageText.includes("The request is blocked.")) {
       return createFailure(
         "blocked",
         "Sakura Checker temporarily blocked the request.",

@@ -12,7 +12,6 @@ function runSearchScript(details, options = {}) {
   const submitCalls = options.submitCalls || [];
   const hasInput = options.hasInput !== false;
   const hasForm = options.hasForm !== false;
-  const hasSetActionSearchForm = Boolean(options.hasSetActionSearchForm);
   const hasRequestSubmit = options.hasRequestSubmit !== false;
   const hasSubmit = options.hasSubmit !== false;
 
@@ -43,7 +42,6 @@ function runSearchScript(details, options = {}) {
       }
     : null;
   const previousDocument = global.document;
-  const previousSelf = global.self;
 
   global.document = {
     querySelector(selector) {
@@ -56,19 +54,11 @@ function runSearchScript(details, options = {}) {
       return null;
     },
   };
-  global.self = hasSetActionSearchForm
-    ? {
-        setactionsearchForm() {
-          requestSubmitCalls.push(readInputValue());
-        },
-      }
-    : {};
 
   try {
     return details.func(...details.args);
   } finally {
     global.document = previousDocument;
-    global.self = previousSelf;
   }
 }
 
@@ -285,7 +275,7 @@ test("fetchRenderedScore retries transient parser injection failures before poll
   }
 });
 
-test("fetchRenderedScore uses the remaining render timeout after parser injection retries", async () => {
+test("fetchRenderedScore polls for the score with its own wait after parser injection", async () => {
   const stub = installChromeStub({
     parserInjectionResponder(_details, callCount) {
       if (callCount === 1) {
@@ -295,35 +285,31 @@ test("fetchRenderedScore uses the remaining render timeout after parser injectio
       return null;
     },
     scriptResponder() {
-      throw new Error("Polling should not start after the render deadline is exhausted.");
+      return {
+        ok: true,
+        score: {
+          kind: "visual-image",
+          images: [{ src: "data:image/png;base64,AAAA", alt: "4" }],
+          suffix: "/5",
+        },
+        verdict: null,
+      };
     },
   });
-  const originalDateNow = Date.now;
-  const nowValues = [1000, 1000, 1000, 1009, 1010, 1010, 1010];
-  let lastNowValue = nowValues[0];
-  Date.now = () => {
-    if (nowValues.length > 0) {
-      lastNowValue = nowValues.shift();
-    }
-
-    return lastNowValue;
-  };
 
   try {
     const result = await renderedScoreClient.fetchRenderedScore({
       asin: "B095JGJCC7",
       sourceUrl: "https://sakura-checker.jp/search/B095JGJCC7/",
       timeoutMs: 200,
-      renderTimeoutMs: 10,
+      renderTimeoutMs: 50,
       pollIntervalMs: 1,
     });
 
-    assert.equal(result.ok, false);
-    assert.equal(result.code, "parse_error");
+    assert.equal(result.ok, true);
     assert.equal(stub.parserInjectionCalls, 2);
-    assert.equal(stub.extractCalls, 0);
+    assert.equal(stub.extractCalls, 1);
   } finally {
-    Date.now = originalDateNow;
     stub.cleanup();
   }
 });
@@ -399,7 +385,6 @@ test("fetchRenderedScore can trigger a Sakura Checker product URL search before 
         return runSearchScript(details, {
           requestSubmitCalls: submissionState.requestSubmitCalls,
           submitCalls: submissionState.submitCalls,
-          hasSetActionSearchForm: true,
         });
       }
 
