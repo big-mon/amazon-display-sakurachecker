@@ -134,7 +134,7 @@ test("checkSakuraScore treats storage get runtime errors as cache misses", async
   }
 });
 
-test("checkSakuraScore does not report success when storage set reports a runtime error", async () => {
+test("checkSakuraScore returns the fetched score when storage set reports a runtime error", async () => {
   let setLastErrorReads = 0;
   const cleanup = installChromeStorageStub({
     setImpl: ({ callback, runtime }) => {
@@ -166,9 +166,11 @@ test("checkSakuraScore does not report success when storage set reports a runtim
       randomImpl: () => 0,
     });
 
-    assert.equal(result.ok, false);
-    assert.equal(result.code, "network_error");
-    assert.equal(result.message, "Storage write failed.");
+    assert.equal(result.ok, true);
+    assert.equal(result.cached, false);
+    assert.equal(result.score.value, "4.00");
+    assert.equal(result.score.suffix, "/5");
+    assert.equal(result.code, undefined);
     assert.equal(setLastErrorReads, 1);
   } finally {
     cleanup();

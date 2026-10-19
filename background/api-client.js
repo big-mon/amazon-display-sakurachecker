@@ -482,12 +482,8 @@
     const payload = buildSuccessPayload(asin, renderedResult);
     try {
       await scoreCache.write(asin, payload);
-    } catch (error) {
-      return createFailure(
-        "network_error",
-        error instanceof Error ? error.message : "Failed to store the Sakura Checker score.",
-        sourceUrl
-      );
+    } catch {
+      // Cache writes are best-effort. A full local quota must not hide a fetched score.
     }
     return payload;
   }
