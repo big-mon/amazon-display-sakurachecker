@@ -488,6 +488,22 @@ const renderedLoadingHtml = `
   </html>
 `;
 
+const serviceUnavailableHtml = `
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <title>Service unavailable</title>
+    </head>
+    <body>
+      <div id="content">
+        <div id="message">
+          <h2>The request is blocked.</h2>
+        </div>
+      </div>
+    </body>
+  </html>
+`;
+
 const renderedBlockedHtml = `
   <!DOCTYPE html>
   <html lang="ja">
@@ -587,6 +603,7 @@ module.exports = {
   realisticPageHtml,
   renderedLoadingHtml,
   renderedBlockedHtml,
+  serviceUnavailableHtml,
   sampleImageTag,
   sameWrapReviewCountTiebreakHtml,
   targetedRenderedLoadingHtml,

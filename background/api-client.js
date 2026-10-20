@@ -20,7 +20,6 @@
     "not_found",
     "not_ready",
     "not_available",
-    "parse_error",
     "url_search_required",
   ]);
 
@@ -208,8 +207,28 @@
         return Promise.resolve();
       }
 
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         chrome.storage.local.set({ [key]: value }, () => {
+          const runtimeError =
+            typeof chrome !== "undefined" && chrome.runtime
+              ? chrome.runtime.lastError
+              : null;
+          if (runtimeError) {
+            reject(new Error(runtimeError.message || "Failed to store the Sakura Checker score."));
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+
+    function remove(key) {
+      if (!hasStorage() || typeof chrome.storage.local.remove !== "function") {
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve) => {
+        chrome.storage.local.remove(key, () => {
           if (typeof chrome !== "undefined" && chrome.runtime) {
             void chrome.runtime.lastError;
           }
@@ -221,6 +240,7 @@
     return {
       get,
       set,
+      remove,
     };
   }
 
@@ -234,7 +254,11 @@
 
       const fetchedAt = Date.parse(cachedValue.fetchedAt);
       const cacheAgeMs = Date.now() - fetchedAt;
-      if (!Number.isFinite(cacheAgeMs) || cacheAgeMs < 0 || cacheAgeMs > ttlMs) {
+      if (Number.isFinite(cacheAgeMs) && cacheAgeMs > ttlMs) {
+        await storage.remove(cacheKey);
+        return null;
+      }
+      if (!Number.isFinite(cacheAgeMs) || cacheAgeMs < 0) {
         return null;
       }
 
@@ -456,7 +480,11 @@
     }
 
     const payload = buildSuccessPayload(asin, renderedResult);
-    await scoreCache.write(asin, payload);
+    try {
+      await scoreCache.write(asin, payload);
+    } catch {
+      // Cache writes are best-effort. A full local quota must not hide a fetched score.
+    }
     return payload;
   }
 
